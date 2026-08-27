@@ -1,0 +1,10 @@
+# Credencials — mai al repositori (spec §13)
+.env
+
+# Entorn Python
+.venv/
+__pycache__/
+*.pyc
+
+# Dades personals de salut — no es versionen (spec §13)
+data/
