@@ -69,18 +69,13 @@ def log_error(message: str) -> None:
 
 
 def get_client() -> Garmin:
-    """Login: primer amb tokens desats; si no n'hi ha, amb email/password del .env."""
-    try:
-        client = Garmin()
-        client.login(TOKENSTORE)
-        print("Login amb tokens desats (sense contrasenya).")
-        return client
-    except Exception:
-        pass
-
+    """Login via login(tokenstore): usa tokens desats si n'hi ha; si no, fa el
+    login amb email/password del .env i la llibreria mateixa desa els tokens."""
     email = os.getenv("GARMIN_EMAIL")
     password = os.getenv("GARMIN_PASSWORD")
-    if not email or not password:
+    had_tokens = (Path(TOKENSTORE).expanduser() / "garmin_tokens.json").exists()
+
+    if not had_tokens and not (email and password):
         sys.exit(
             "No hi ha tokens desats ni credencials.\n"
             "Copia .env.example com a .env i omple GARMIN_EMAIL i GARMIN_PASSWORD."
@@ -88,9 +83,11 @@ def get_client() -> Garmin:
 
     client = Garmin(email=email, password=password,
                     prompt_mfa=lambda: input("Codi MFA: "))
-    client.login()
-    client.garth.dump(TOKENSTORE)
-    print(f"Login inicial correcte. Tokens desats a {TOKENSTORE}.")
+    client.login(TOKENSTORE)
+    if had_tokens:
+        print("Login amb tokens desats (sense contrasenya).")
+    else:
+        print(f"Login inicial correcte. Tokens desats a {TOKENSTORE}.")
     return client
 
 
