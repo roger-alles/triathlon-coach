@@ -1,0 +1,665 @@
+# Pla real de l'atleta, extret de l'artefacte "Compte enrere a Fornells" (26/08/2026).
+# Aquest fitxer és la font de veritat inicial del sistema: carrega'l a `goal`,
+# `plan_block` i `plan_session` amb un loader idempotent (`ingest/seed.py`).
+# Els temps són en segons i les distàncies en metres, com a la base de dades.
+schema_version: "1.1"
+source: "artifact:747161a0 — Compte enrere a Fornells, 26/08/2026"
+
+goal:
+  name: "Artiem Half Menorca · Short — Fornells"
+  discipline: triathlon
+  event_date: 2026-09-27
+  priority: A
+  status: active
+  profile:
+    first_race_ever: true          # primer triatló de l'atleta: la logística importa tant com la forma
+    start_time: "08:35"
+    time_limit_sec: 14400
+    location: "Fornells, Menorca"
+    segments:
+      - sport: swim
+        distance_m: 1000
+        venue: open_water
+        wetsuit: "improbable"      # prohibit per sobre de 22 °C; badia a 23–25 °C al setembre
+        notes: "Badia de Fornells, circuit circular"
+      - sport: bike
+        distance_m: 34000
+        drafting_allowed: false    # 12 m de separació, 20 s per completar un avançament
+        max_gradient_pct: 9.6
+        notes: "Es Mercadal · Camí d'en Kane"
+      - sport: run
+        distance_m: 8500
+        distance_uncertain: true   # el reglament diu 9 km, les fitxes de la cursa 8 — confirmar al briefing
+        notes: "Ses Salines + pujada a la torre de Fornells"
+    target_times_sec:
+      #              conservador  objectiu  optimista
+      swim:        [1560, 1380, 1200]
+      t1:          [ 180,  135,  105]
+      bike:        [3960, 3720, 3480]
+      t2:          [  90,   70,   55]
+      run:         [2190, 2040, 1950]
+      total:       [7980, 7350, 6780]
+      note: "Si el sector a peu són 9 km i no 8, suma ~240 s a cada columna."
+    emphasis:
+      limiter: swim                # on l'entrenament encara canvia el resultat
+      protect: run                 # arma de l'atleta: mantenir, no millorar
+      rationale: >
+        Amb 37:30 als 10 km ja és el millor corredor del seu propi triatló; en quatre
+        setmanes córrer més no dona res i pot lesionar. Tot el creixement va a natació i bici.
+
+athlete_context:
+  known:
+    run_10k_pr_sec: 2250           # 37:30
+    weekly_hours_before_plan: 5
+    swim_experience: "~1 any de crol"
+  unknown:                         # ⚠️ el sistema ha de funcionar amb aquests camps buits
+    - ftp_watts
+    - css_sec_per_100m
+    - threshold_pace_sec_km
+    - max_hr
+  constraints:
+    fixed_rest_day: monday
+    gym: false                     # decisió explícita: no començar força a 4 setmanes vista
+    layoff: "un mes sense nedar (juliol–agost 2026)"
+    weekly_hours_ceiling: 8
+
+blocks:
+
+# ─────────────────────────────────────────────────────────────────────
+- phase: base
+  name: "Bloc inicial · tornar a l'aigua i mesurar"
+  start_date: 2026-08-26
+  end_date: 2026-08-30
+  target_weekly_hours: 4.5
+  return_from_layoff: true         # desactiva la regla de rampa, vegeu R1
+  fallback: "les dues natacions; la resta és bonus"
+  intent: >
+    Encara no és entrenar: és reobrir la porta de la piscina i recuperar dies fixos.
+    Cap sessió dura.
+  sessions:
+
+  - date: 2026-08-26
+    sport: swim
+    session_type: technique
+    title: "Reentrada suau"
+    priority: support
+    duration_sec_target: 2100
+    distance_m_target: 1100
+    rationale: >
+      Sense test. Després d'un mes fora, un test només mesuraria el desentrenament i
+      carregaria l'espatlla. Nedar avui val més que saber.
+    structure:
+      steps:
+        - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
+        - {phase: main, repeats: 10, work: {distance_m: 50, target: {type: open}, note: "tècnica"}, recovery: {duration_sec: 20}}
+        - {phase: main, repeats: 4, work: {distance_m: 100, target: {type: rpe, value: 5}}, recovery: {duration_sec: 30}}
+        - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
+
+  - date: 2026-08-27
+    sport: bike
+    session_type: endurance
+    title: "Rodatge ondulat amb tastet"
+    priority: support
+    duration_sec_target: 4500
+    rationale: "Identificar quina sensació té l'esforç que haurà de sostenir una hora."
+    structure:
+      steps:
+        - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
+        - {phase: main, repeats: 3, work: {duration_sec: 360, target: {type: rpe, value: 7, label: "esforç de cursa"}}, recovery: {duration_sec: 240, target: {type: rpe, value: 3}}}
+        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
+
+  - date: 2026-08-27
+    sport: brick
+    session_type: bike_run
+    title: "Primer brick"
+    priority: optional
+    duration_sec_target: 600
+    parent_of_day: bike            # es fa immediatament després de la sessió de bici del mateix dia
+    structure:
+      steps:
+        - {phase: main, duration_sec: 600, target: {type: rpe, value: 4}}
+
+  - date: 2026-08-28
+    sport: swim
+    session_type: test
+    title: "Test de referència"
+    priority: key
+    is_test: true
+    test:
+      metric: swim_continuous
+      protocol: "Nedar seguit i còmode fins a un màxim de 800 m; anotar metres i temps per 100."
+      records: [distance_m, pace_sec_100m]
+    duration_sec_target: 2400
+    rationale: "Punt de partida real, ja amb dos banys al cos. Es compara amb el test del 10/09."
+    structure:
+      steps:
+        - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
+        - {phase: main, repeats: 8, work: {distance_m: 50, target: {type: open}, note: "tècnica"}, recovery: {duration_sec: 20}}
+        - {phase: main, distance_m: 800, target: {type: rpe, value: 6}, note: "continu, cronometrat, màxim 800"}
+        - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
+
+  - date: 2026-08-29
+    sport: run
+    session_type: intervals
+    title: "Primeres sèries"
+    priority: key
+    duration_sec_target: 3300
+    distance_m_target: 11000
+    rationale: "Conservador a posta: fa mesos que només fa rodatges."
+    structure:
+      steps:
+        - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
+        - {phase: main, repeats: 5, work: {distance_m: 1000, target: {type: pace_sec_km, value: 222, tolerance: 3}}, recovery: {duration_sec: 90}}
+        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
+
+  - date: 2026-08-30
+    sport: swim
+    session_type: open_water
+    title: "Primer contacte al mar"
+    priority: key
+    duration_sec_target: 1800
+    rationale: "Sense neoprè des del primer dia. Buscar calma, no ritme."
+    structure:
+      steps:
+        - {phase: main, duration_sec: 1800, target: {type: rpe, value: 4}, note: "paral·lel a la costa, poca fondària, orientació cada 6–8 braçades"}
+
+  - date: 2026-08-30
+    sport: run
+    session_type: easy
+    title: "Rodatge suau"
+    priority: support
+    duration_sec_target: 2400
+    structure:
+      steps:
+        - {phase: main, duration_sec: 2400, target: {type: rpe, value: 3}}
+
+# ─────────────────────────────────────────────────────────────────────
+- phase: build
+  name: "Setmana 1 · reconstruir la natació"
+  start_date: 2026-08-31
+  end_date: 2026-09-06
+  target_weekly_hours: 7
+  fallback: "les tres natacions de dimarts, dijous i diumenge; sacrifica la bici de dimecres"
+  intent: >
+    Primera setmana amb l'estructura completa. Quatre entrades a l'aigua, totes curtes:
+    després d'un mes fora, l'espatlla es trenca per volum, no per freqüència.
+  sessions:
+
+  - {date: 2026-08-31, sport: rest, session_type: full, title: "Descans", priority: key,
+     rationale: "Fix cada dilluns. Té la mateixa importància que la resta.", structure: {steps: []}}
+
+  - date: 2026-09-01
+    sport: swim
+    session_type: technique
+    title: "Tècnica + sèries curtes"
+    priority: key
+    duration_sec_target: 2700
+    distance_m_target: 1700
+    structure:
+      steps:
+        - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
+        - {phase: main, repeats: 10, work: {distance_m: 50, target: {type: open}, note: "tècnica"}, recovery: {duration_sec: 15}}
+        - {phase: main, repeats: 6, work: {distance_m: 100, target: {type: rpe, value: 6}, note: "ritme constant"}, recovery: {duration_sec: 25}}
+        - {phase: main, repeats: 6, work: {distance_m: 50, target: {type: rpe, value: 6}}, recovery: {duration_sec: 20}}
+        - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
+
+  - date: 2026-09-02
+    sport: bike
+    session_type: race_pace
+    title: "Específica de cursa"
+    priority: key
+    duration_sec_target: 4500
+    structure:
+      steps:
+        - {phase: warmup, duration_sec: 1200, target: {type: rpe, value: 4}}
+        - {phase: main, repeats: 2, work: {duration_sec: 900, target: {type: rpe, value: 7, label: "esforç de cursa"}}, recovery: {duration_sec: 360, target: {type: rpe, value: 3}}}
+        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
+
+  - date: 2026-09-02
+    sport: brick
+    session_type: bike_run
+    title: "Brick"
+    priority: support
+    duration_sec_target: 600
+    parent_of_day: bike
+    structure:
+      steps:
+        - {phase: main, duration_sec: 240, target: {type: rpe, value: 7, label: "ritme de cursa"}}
+        - {phase: cooldown, duration_sec: 360, target: {type: rpe, value: 3}}
+
+  - date: 2026-09-03
+    sport: swim
+    session_type: endurance
+    title: "Continuïtat"
+    priority: key
+    duration_sec_target: 2400
+    distance_m_target: 1500
+    structure:
+      steps:
+        - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
+        - {phase: main, repeats: 4, work: {distance_m: 200, target: {type: rpe, value: 6}}, recovery: {duration_sec: 30}}
+        - {phase: main, repeats: 8, work: {distance_m: 50, target: {type: open}, note: "tècnica"}, recovery: {duration_sec: 20}}
+        - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
+
+  - date: 2026-09-04
+    sport: run
+    session_type: tempo
+    title: "Llindar + velocitat"
+    priority: key
+    duration_sec_target: 3600
+    distance_m_target: 13000
+    structure:
+      steps:
+        - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
+        - {phase: main, duration_sec: 1200, target: {type: pace_sec_km, value: 237, tolerance: 3, label: "tempo"}}
+        - {phase: main, repeats: 6, work: {distance_m: 200, target: {type: rpe, value: 9}}, recovery: {duration_sec: 60}}
+        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
+
+  - date: 2026-09-05
+    sport: bike
+    session_type: long
+    title: "Llarga amb blocs"
+    priority: key
+    duration_sec_target: 6300
+    rationale: "Assaig de nutrició: menjar i beure exactament com el dia 27."
+    structure:
+      steps:
+        - {phase: warmup, duration_sec: 1200, target: {type: rpe, value: 4}}
+        - {phase: main, repeats: 3, work: {duration_sec: 480, target: {type: rpe, value: 7, label: "esforç de cursa"}}, recovery: {duration_sec: 300, target: {type: rpe, value: 3}}}
+        - {phase: cooldown, duration_sec: 900, target: {type: rpe, value: 3}}
+
+  - date: 2026-09-05
+    sport: brick
+    session_type: bike_run
+    title: "Brick amb final a ritme"
+    priority: support
+    duration_sec_target: 900
+    parent_of_day: bike
+    structure:
+      steps:
+        - {phase: main, duration_sec: 420, target: {type: rpe, value: 4}}
+        - {phase: main, duration_sec: 480, target: {type: pace_sec_km, value: 250, label: "ritme objectiu del sector a peu"}}
+
+  - date: 2026-09-06
+    sport: swim
+    session_type: open_water
+    title: "Aigües obertes"
+    priority: key
+    duration_sec_target: 2400
+    structure:
+      steps:
+        - {phase: main, distance_m: 500, target: {type: rpe, value: 6}, note: "continus"}
+        - {phase: main, repeats: 3, work: {duration_sec: 60, target: {type: rpe, value: 8}, note: "sortida des de la platja: entrar corrent, capbussada"}, recovery: {duration_sec: 120}}
+
+  - date: 2026-09-06
+    sport: run
+    session_type: recovery
+    title: "Rodatge suau"
+    priority: support
+    duration_sec_target: 2700
+    structure:
+      steps:
+        - {phase: main, duration_sec: 2700, target: {type: pace_sec_km, value: 285, comparator: slower_than}}
+
+# ─────────────────────────────────────────────────────────────────────
+- phase: peak
+  name: "Setmana 2 · el pic, amb el simulacre"
+  start_date: 2026-09-07
+  end_date: 2026-09-13
+  target_weekly_hours: 8
+  fallback: "les dues natacions i el simulacre; si dissabte no pots, mou-lo a diumenge, però no el saltis"
+  intent: "La setmana amb més càrrega i la que conté la sessió que val per tres."
+  sessions:
+
+  - {date: 2026-09-07, sport: rest, session_type: full, title: "Descans", priority: key, structure: {steps: []}}
+
+  - date: 2026-09-08
+    sport: swim
+    session_type: endurance
+    title: "Sèries mitjanes"
+    priority: key
+    duration_sec_target: 2700
+    distance_m_target: 1700
+    structure:
+      steps:
+        - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
+        - {phase: main, repeats: 10, work: {distance_m: 50, target: {type: open}, note: "tècnica"}, recovery: {duration_sec: 20}}
+        - {phase: main, repeats: 3, work: {distance_m: 300, target: {type: rpe, value: 6}}, recovery: {duration_sec: 35}}
+        - {phase: main, repeats: 4, work: {distance_m: 50, target: {type: rpe, value: 8}}, recovery: {duration_sec: 30}}
+        - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
+
+  - date: 2026-09-09
+    sport: bike
+    session_type: race_pace
+    title: "Blocs amb repunts"
+    priority: key
+    duration_sec_target: 4800
+    rationale: "Entrenar a no deixar de pedalar quan corona: es recupera pedalant, no planejant."
+    structure:
+      steps:
+        - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
+        - {phase: main, repeats: 3, work: {duration_sec: 720, target: {type: rpe, value: 7, label: "esforç de cursa"}, contains: {repeats: 2, duration_sec: 40, target: {type: rpe, value: 9}, note: "dempeus"}}, recovery: {duration_sec: 300, target: {type: rpe, value: 3}}}
+        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
+
+  - date: 2026-09-09
+    sport: brick
+    session_type: bike_run
+    title: "Brick"
+    priority: support
+    duration_sec_target: 600
+    parent_of_day: bike
+    structure:
+      steps: [{phase: main, duration_sec: 600, target: {type: rpe, value: 4}}]
+
+  - date: 2026-09-10
+    sport: swim
+    session_type: test
+    title: "800 m continus cronometrats"
+    priority: key
+    is_test: true
+    test:
+      metric: swim_continuous
+      protocol: "800 m seguits a piscina, cronometrats."
+      records: [duration_sec, pace_sec_100m]
+      compare_with: 2026-08-28
+    duration_sec_target: 2700
+    rationale: "Aquí es veu si la freqüència està funcionant."
+    structure:
+      steps:
+        - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
+        - {phase: main, distance_m: 800, target: {type: rpe, value: 7}, note: "continu, cronometrat"}
+        - {phase: main, repeats: 6, work: {distance_m: 50, target: {type: rpe, value: 3}}, recovery: {duration_sec: 20}}
+        - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
+
+  - date: 2026-09-11
+    sport: run
+    session_type: easy
+    title: "Rodatge amb progressius"
+    priority: support
+    duration_sec_target: 3000
+    rationale: "Deliberadament fàcil: demà toca la sessió gran."
+    structure:
+      steps:
+        - {phase: main, duration_sec: 2700, target: {type: rpe, value: 3}}
+        - {phase: main, repeats: 6, work: {duration_sec: 30, target: {type: rpe, value: 8}}, recovery: {duration_sec: 60}}
+
+  - date: 2026-09-12
+    sport: multisport                      # ⚠️ tipus nou, vegeu §3.1 de l'especificació
+    session_type: race_simulation
+    title: "SIMULACRE COMPLET DE CURSA"
+    priority: key
+    duration_sec_target: 7200
+    rationale: >
+      Mateixa hora que la prova, mateix esmorzar, mateix material. Res estrenat el dia 27.
+      Aquí es descobreixen els problemes mentre encara es poden resoldre.
+    rehearses_goal: true                   # exempta de la regla R9
+    structure:
+      segments:
+        - {sport: swim, distance_m: 800, venue: open_water, target: {type: rpe, value: 7}}
+        - {sport: transition, transition: t1, timed: true}
+        - {sport: bike, distance_m: 34000, target: {type: rpe, value: 7, label: "esforç de cursa"}}
+        - {sport: transition, transition: t2, timed: true}
+        - {sport: run, distance_m: 3000, target: {type: pace_sec_km, value: 250, label: "ritme objectiu"}}
+
+  - date: 2026-09-13
+    sport: run
+    session_type: recovery
+    title: "Recuperació"
+    priority: optional
+    duration_sec_target: 2100
+    rationale: "O res, si el simulacre l'ha deixat tocat."
+    structure:
+      steps: [{phase: main, duration_sec: 2100, target: {type: rpe, value: 2}}]
+
+  - date: 2026-09-13
+    sport: swim
+    session_type: recovery
+    title: "Aigua regenerativa"
+    priority: optional
+    duration_sec_target: 1800
+    structure:
+      steps: [{phase: main, duration_sec: 1800, target: {type: rpe, value: 3}}]
+
+# ─────────────────────────────────────────────────────────────────────
+- phase: peak
+  name: "Setmana 3 · específica, tot a ritme de cursa"
+  start_date: 2026-09-14
+  end_date: 2026-09-20
+  target_weekly_hours: 7
+  fallback: "els 1.000 m de diumenge i els 2×20′ de bici de dimecres"
+  intent: "Tot el que queda s'assembla a la cursa."
+  sessions:
+
+  - {date: 2026-09-14, sport: rest, session_type: full, title: "Descans", priority: key, structure: {steps: []}}
+
+  - date: 2026-09-15
+    sport: swim
+    session_type: race_pace
+    title: "Ritme de cursa"
+    priority: key
+    duration_sec_target: 2700
+    structure:
+      steps:
+        - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
+        - {phase: main, repeats: 8, work: {distance_m: 50, target: {type: open}, note: "tècnica"}, recovery: {duration_sec: 20}}
+        - {phase: main, repeats: 4, work: {distance_m: 200, target: {type: rpe, value: 7, label: "ritme de cursa"}}, recovery: {duration_sec: 20}}
+        - {phase: main, repeats: 6, work: {distance_m: 50, target: {type: rpe, value: 8}, note: "sortida ràpida"}, recovery: {duration_sec: 30}}
+        - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
+
+  - date: 2026-09-16
+    sport: bike
+    session_type: race_pace
+    title: "Dos blocs de vint"
+    priority: key
+    duration_sec_target: 4500
+    rationale: "Exactament l'esforç del dia 27, ni un watt més."
+    structure:
+      steps:
+        - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
+        - {phase: main, repeats: 2, work: {duration_sec: 1200, target: {type: rpe, value: 7, label: "esforç de cursa"}}, recovery: {duration_sec: 300, target: {type: rpe, value: 3}}}
+        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
+
+  - date: 2026-09-16
+    sport: brick
+    session_type: bike_run
+    title: "Brick a ritme"
+    priority: support
+    duration_sec_target: 720
+    parent_of_day: bike
+    structure:
+      steps: [{phase: main, duration_sec: 720, target: {type: pace_sec_km, value: 250, label: "ritme objectiu"}}]
+
+  - date: 2026-09-17
+    sport: swim
+    session_type: endurance
+    title: "Continuïtat llarga"
+    priority: key
+    duration_sec_target: 2400
+    structure:
+      steps:
+        - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
+        - {phase: main, repeats: 2, work: {distance_m: 500, target: {type: rpe, value: 6}}, recovery: {duration_sec: 45}}
+        - {phase: main, repeats: 6, work: {distance_m: 50, target: {type: rpe, value: 5}}, recovery: {duration_sec: 20}}
+        - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
+
+  - date: 2026-09-18
+    sport: run
+    session_type: intervals
+    title: "Última sessió de qualitat"
+    priority: key
+    duration_sec_target: 3300
+    distance_m_target: 12000
+    structure:
+      steps:
+        - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
+        - {phase: main, repeats: 4, work: {distance_m: 1000, target: {type: pace_sec_km, value: 217, tolerance: 3}}, recovery: {duration_sec: 90}}
+        - {phase: main, repeats: 4, work: {distance_m: 200, target: {type: rpe, value: 9}}, recovery: {duration_sec: 60}}
+        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
+
+  - date: 2026-09-19
+    sport: bike
+    session_type: long
+    title: "Última llarga"
+    priority: key
+    duration_sec_target: 5400
+    structure:
+      steps:
+        - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
+        - {phase: main, repeats: 3, work: {duration_sec: 600, target: {type: rpe, value: 7, label: "esforç de cursa"}}, recovery: {duration_sec: 300, target: {type: rpe, value: 3}}}
+        - {phase: cooldown, duration_sec: 900, target: {type: rpe, value: 3}}
+
+  - date: 2026-09-19
+    sport: brick
+    session_type: bike_run
+    title: "Brick + assaig de T2"
+    priority: support
+    duration_sec_target: 900
+    parent_of_day: bike
+    includes_transition_practice: [t2]
+    rationale: "Assajar la T2 dues vegades cronometrant-se: bici al suport, casc fora, cordons elàstics, sortir."
+    structure:
+      steps:
+        - {phase: main, duration_sec: 480, target: {type: pace_sec_km, value: 250, label: "ritme objectiu"}}
+        - {phase: main, duration_sec: 420, target: {type: rpe, value: 3}}
+
+  - date: 2026-09-20
+    sport: swim
+    session_type: open_water
+    title: "1.000 m al mar a ritme de cursa"
+    priority: key
+    duration_sec_target: 3000
+    rehearses_goal: true                   # assaig de la prova: exempta de R9
+    rationale: "L'assaig definitiu. Si això surt, la cursa ja no fa por."
+    structure:
+      steps:
+        - {phase: main, distance_m: 1000, target: {type: rpe, value: 7, label: "ritme de cursa"}, note: "continus, sense neoprè, amb orientació real"}
+        - {phase: main, repeats: 2, work: {distance_m: 200, target: {type: rpe, value: 7}, note: "sortida des de la platja"}, recovery: {duration_sec: 120}}
+
+  - date: 2026-09-20
+    sport: run
+    session_type: easy
+    title: "Rodatge suau"
+    priority: support
+    duration_sec_target: 2400
+    structure:
+      steps: [{phase: main, duration_sec: 2400, target: {type: rpe, value: 3}}]
+
+# ─────────────────────────────────────────────────────────────────────
+- phase: taper
+  name: "Setmana 4 · afinada i cursa"
+  start_date: 2026-09-21
+  end_date: 2026-09-27
+  target_weekly_hours: 3.5
+  fallback: "aquesta setmana el mínim és el màxim; fer de més és l'únic error possible"
+  intent: "Volum a la meitat, intensitat mantinguda en dosis molt curtes."
+  sessions:
+
+  - {date: 2026-09-21, sport: rest, session_type: full, title: "Descans", priority: key, structure: {steps: []}}
+
+  - date: 2026-09-22
+    sport: swim
+    session_type: race_pace
+    title: "Toc a l'aigua"
+    priority: support
+    duration_sec_target: 2100
+    rationale: "Sortir amb sensació de «en podria fer més»."
+    structure:
+      steps:
+        - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
+        - {phase: main, repeats: 8, work: {distance_m: 50, target: {type: open}, note: "tècnica"}, recovery: {duration_sec: 20}}
+        - {phase: main, repeats: 4, work: {distance_m: 100, target: {type: rpe, value: 7, label: "ritme de cursa"}}, recovery: {duration_sec: 20}}
+        - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
+
+  - date: 2026-09-23
+    sport: run
+    session_type: intervals
+    title: "Intensitat curta"
+    priority: support
+    duration_sec_target: 2700
+    distance_m_target: 9000
+    structure:
+      steps:
+        - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
+        - {phase: main, repeats: 5, work: {duration_sec: 180, target: {type: pace_sec_km, value: 225, label: "ritme de 10 km"}}, recovery: {duration_sec: 90}}
+        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
+
+  - date: 2026-09-24
+    sport: bike
+    session_type: race_pace
+    title: "Recordatori de ritme"
+    priority: support
+    duration_sec_target: 3300
+    structure:
+      steps:
+        - {phase: warmup, duration_sec: 1200, target: {type: rpe, value: 4}}
+        - {phase: main, repeats: 3, work: {duration_sec: 300, target: {type: rpe, value: 7, label: "esforç de cursa"}}, recovery: {duration_sec: 180}}
+        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
+
+  - date: 2026-09-24
+    sport: brick
+    session_type: bike_run
+    title: "Últim brick"
+    priority: optional
+    duration_sec_target: 480
+    parent_of_day: bike
+    structure:
+      steps:
+        - {phase: main, duration_sec: 240, target: {type: rpe, value: 7}}
+        - {phase: cooldown, duration_sec: 240, target: {type: rpe, value: 3}}
+
+  - {date: 2026-09-24, type: logistics, title: "Revisió completa de material", when: "vespre"}
+
+  - {date: 2026-09-25, sport: rest, session_type: full, title: "Descans total · viatge", priority: key,
+     rationale: "Hidratar bé tot el dia.", structure: {steps: []}}
+
+  - date: 2026-09-26
+    sport: multisport
+    session_type: shakeout
+    title: "Desbloqueig i reconeixement"
+    priority: support
+    duration_sec_target: 3000
+    structure:
+      segments:
+        - {sport: run, duration_sec: 1200, target: {type: rpe, value: 3}, note: "amb 4×30″ progressius"}
+        - {sport: swim, duration_sec: 600, venue: open_water, target: {type: rpe, value: 3}, note: "veure l'aigua i la zona de sortida"}
+        - {sport: bike, duration_sec: 1200, target: {type: rpe, value: 3}, note: "amb 3×1′"}
+
+  - date: 2026-09-27
+    sport: multisport
+    session_type: race
+    title: "ARTIEM HALF MENORCA · SHORT"
+    priority: key
+    is_goal_event: true
+    structure:
+      segments:
+        - {sport: swim, distance_m: 1000, venue: open_water}
+        - {sport: transition, transition: t1}
+        - {sport: bike, distance_m: 34000}
+        - {sport: transition, transition: t2}
+        - {sport: run, distance_m: 8500}
+
+# ─────────────────────────────────────────────────────────────────────
+# Tasques de logística lligades a l'objectiu. No són entrenament i no compten
+# per a la càrrega, però són bloquejants: no fer-les costa la cursa.
+logistics:
+  - {date: 2026-09-25, title: "Viatjar a Menorca", blocking: true,
+     detail: "Obligatori ser-hi divendres: el dorsal es recull dissabte a la tarda i no en donen el diumenge."}
+  - {date: 2026-09-25, title: "Preparar la caixa de transició i fotografiar-la", blocking: false}
+  - {date: 2026-09-26, title: "Recollida de dorsal · Fira del Participant", blocking: true, when: "tarda",
+     detail: "Poliesportiu de Fornells. Portar DNI i llicència. Confirmar l'horari del 2026. Comprovar dorsal, xip i adhesius abans de marxar."}
+  - {date: 2026-09-26, title: "Sopar aviat i sense experiments", blocking: false}
+
+race_day_protocol:
+  - {time: "05:30", what: "Despertar i esmorzar", detail: "Pa blanc amb mel, plàtan i cafè: 90–100 g de carbohidrats. Res de fibra ni greix. 3 h abans."}
+  - {time: "07:00", what: "A boxes", detail: "Muntar la caixa, comprovar pressions, canvi i bidó. Memoritzar entrada i sortida de la zona de transició."}
+  - {time: "07:45", what: "Escalfament", detail: "10′ de trot molt suau, mobilitat d'espatlles, 4–5 progressius de 20″."}
+  - {time: "08:10", what: "Últim avituallament", detail: "Un gel o 30 g de carbohidrats amb aigua. Crema solar. Xip."}
+  - {time: "08:20", what: "Escalfament a l'aigua", detail: "Si el permeten: 5′ nedant i 4 acceleracions curtes."}
+  - {time: "08:35", what: "Sortida", detail: "Col·locar-se al lateral i una mica endarrere."}
+
+pacing_rules:
+  swim: "Primers 100 m al 70 % i respirant llarg. Orientació cada 6–8 braçades. Sortir sense deute, no fer temps."
+  t1:   "Mitjons sí. Casc cordat abans de tocar la bici."
+  bike: "Primers 5 minuts suaus. Esforç «còmodament incòmode». No deixar de pedalar al cim. 40–60 g de carbohidrats, un glop cada 10′. Drafting prohibit: 12 m, avançar en menys de 20″."
+  t2:   "Cinturó portadorsals: mitja volta."
+  run:  "Primer km a 4:20–4:25; des del km 2, a 4:05–4:10. A la torre, mantenir intensitat i no ritme. Mullar-se el cap a cada avituallament."
