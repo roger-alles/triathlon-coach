@@ -1,0 +1,43 @@
+{
+  "title": "Sortida de l'entrenador (spec §7)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "report_type", "readiness", "summary",
+               "rationale", "session_changes", "flags", "questions_for_athlete"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "report_type": {"enum": ["daily", "weekly", "replan", "answer"]},
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "drivers", "confidence"],
+      "properties": {
+        "verdict": {"enum": ["green", "amber", "red"]},
+        "drivers": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"enum": ["high", "medium", "low"]}
+      }
+    },
+    "summary": {"type": "string", "description": "Frase curta per a la pantalla d'avui"},
+    "rationale": {"type": "string", "description": "El perquè complet, en el llenguatge de l'atleta"},
+    "session_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["plan_session_id", "action", "reason"],
+        "properties": {
+          "plan_session_id": {"type": "integer"},
+          "action": {"enum": ["keep", "modify", "replace", "move", "cancel"]},
+          "new_session": {
+            "type": "object",
+            "description": "Obligatori per a modify/replace: sport, session_type, title, structure (contracte §6), duration_sec_target, priority, rationale"
+          },
+          "new_date": {"type": "string", "description": "Obligatori per a move (YYYY-MM-DD)"},
+          "reason": {"type": "string"}
+        }
+      }
+    },
+    "flags": {"type": "array", "items": {"type": "string"}},
+    "questions_for_athlete": {"type": "array", "items": {"type": "string"}}
+  }
+}
