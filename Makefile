@@ -7,6 +7,7 @@ migrate:
 
 sync:
 	$(PY) -m ingest.sync
+	$(PY) -m ingest.load
 
 test:
 	$(PY) -m pytest tests/ -q
