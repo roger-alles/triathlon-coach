@@ -8,3 +8,6 @@ __pycache__/
 
 # Dades personals de salut — no es versionen (spec §13)
 data/
+
+# Telemetria del workspace PM (hook agent-trace-log.sh escriu a $CWD/output)
+output/
