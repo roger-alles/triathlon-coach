@@ -187,8 +187,193 @@ def test_r14_session_in_the_past_is_blocked():
     assert any(v_.rule == "R14" and "passat" in v_.message for v_ in v)
 
 
-# ─── R7, R8, R13: es cobreixen amb el pla de Fornells (test_plan_loader) ──
-# R2, R6, R9, R10: casos sintètics mínims
+# ─── helpers per als escenaris amb cursa ─────────────────────────────
+
+def _hard_run(d, hours=0.2, block=None, title=None):
+    sec = int(hours * 3600)
+    return Session(local_date=d, sport="run", session_type="intervals",
+                   title=title or f"hard-{d}",
+                   structure={"steps": [{"phase": "main", "duration_sec": sec,
+                                         "target": {"type": "rpe", "value": 8}}]},
+                   duration_sec_target=sec, block=block)
+
+
+def race_session(d, block):
+    return Session(local_date=d, sport="run", session_type="race", title="LA CURSA",
+                   priority="key", is_goal_event=True, duration_sec_target=7400,
+                   structure={"steps": [{"phase": "main", "distance_m": 9000,
+                                         "target": {"type": "open"}}]}, block=block)
+
+
+def taper_scenario(taper_start_offset, taper_hours=3.0, with_intensity=True,
+                   with_taper_block=True):
+    """2 setmanes de build a 7h + setmana de cursa; el taper es parametritza.
+
+    taper_start_offset: dies abans de la cursa que comença el bloc de taper.
+    """
+    race_day = MON + timedelta(weeks=2, days=6)  # diumenge de la 3a setmana
+    goal = Goal(name="Cursa", discipline="run", event_date=race_day, priority="A",
+                profile={"target_times_sec": {"total": [8000, 7400, 6900]}})
+    b = mk_block(MON, weeks=3)
+    plan = []
+    for i in range(2):
+        plan += steady_week(MON + timedelta(weeks=i), 6.8, b)
+        plan.append(_hard_run(MON + timedelta(weeks=i, days=3), block=b))
+
+    week3 = MON + timedelta(weeks=2)
+    plan += [rest_session(week3, b), rest_session(week3 + timedelta(days=1), b)]
+    if with_taper_block:
+        tb = Block(id=2, phase="taper", start_date=race_day - timedelta(days=taper_start_offset),
+                   end_date=race_day, target_weekly_hours=taper_hours)
+        hard_hours = 0.2 if with_intensity else 0.0
+        plan.append(easy_session(week3 + timedelta(days=2), hours=taper_hours - hard_hours,
+                                 block=tb))
+        if with_intensity:
+            plan.append(_hard_run(week3 + timedelta(days=4), block=tb))
+        race_block = tb
+    else:
+        plan.append(easy_session(week3 + timedelta(days=2), hours=taper_hours, block=b))
+        race_block = b
+    plan.append(race_session(race_day, race_block))
+    return plan, goal
+
+
+def r8_of(plan, goal):
+    return [v for v in run(plan, history_flat(MON), goals=[goal]) if v.rule == "R8"]
+
+
+# ─── R7 freqüència mínima (triatló) ──────────────────────────────────
+
+TRI_GOAL = Goal(name="Tri", discipline="triathlon", event_date=None, priority="A",
+                profile={})
+
+
+def test_r7_build_week_with_one_swim_and_no_brick_warns():
+    b = mk_block(MON)
+    plan = [rest_session(MON, b),
+            easy_session(MON + timedelta(days=1), sport="swim", block=b),
+            easy_session(MON + timedelta(days=2), sport="run", block=b),
+            easy_session(MON + timedelta(days=4), sport="run", hours=0.8, block=b),
+            easy_session(MON + timedelta(days=5), sport="bike", hours=1.2, block=b)]
+    r7 = [v for v in run(plan, goals=[TRI_GOAL]) if v.rule == "R7"]
+    assert len(r7) == 2  # 1 natació (<2) i cap brick
+    assert not any(v.blocking for v in r7)
+
+
+def test_r7_two_swims_and_a_brick_pass():
+    b = mk_block(MON)
+    plan = [rest_session(MON, b),
+            easy_session(MON + timedelta(days=1), sport="swim", block=b),
+            easy_session(MON + timedelta(days=2), sport="brick", hours=0.3, block=b),
+            easy_session(MON + timedelta(days=4), sport="swim", hours=0.8, block=b),
+            easy_session(MON + timedelta(days=5), sport="bike", hours=1.2, block=b)]
+    assert "R7" not in rules_of(run(plan, goals=[TRI_GOAL]))
+
+
+# ─── R8 taper: els quatre subcasos ───────────────────────────────────
+
+def test_r8_missing_taper_block_is_blocked():
+    plan, goal = taper_scenario(6, with_taper_block=False)
+    v = r8_of(plan, goal)
+    assert v and v[0].blocking and "sense bloc de taper" in v[0].message
+
+
+def test_r8_taper_of_three_days_is_blocked():
+    plan, goal = taper_scenario(2)
+    v = r8_of(plan, goal)
+    assert any("taper de 3 dies" in x.message for x in v)
+
+
+def test_r8_taper_without_intensity_is_blocked():
+    plan, goal = taper_scenario(6, with_intensity=False)
+    v = r8_of(plan, goal)
+    assert any("intensitat" in x.message for x in v)
+
+
+def test_r8_volume_not_reduced_is_blocked():
+    plan, goal = taper_scenario(6, taper_hours=6.5)
+    v = r8_of(plan, goal)
+    assert any("volum" in x.message for x in v)
+
+
+def test_r8_proper_taper_passes():
+    plan, goal = taper_scenario(6)
+    assert r8_of(plan, goal) == []
+
+
+# ─── R13 coherència amb l'objectiu ───────────────────────────────────
+
+def test_r13_bike_only_week_warns():
+    b = mk_block(MON)
+    plan = [rest_session(MON, b),
+            easy_session(MON + timedelta(days=2), sport="bike", hours=5, block=b)]
+    r13 = [v for v in run(plan, goals=[TRI_GOAL]) if v.rule == "R13"]
+    # bici al 100% (fora de [35,55]) i natació al 0% (sota el mínim del limitant no declarat)
+    assert r13 and not any(v.blocking for v in r13)
+    assert any("bike" in v.message for v in r13)
+
+
+def test_r13_balanced_triathlon_week_passes():
+    b = mk_block(MON)
+    plan = [rest_session(MON, b),
+            easy_session(MON + timedelta(days=1), sport="swim", hours=1.1, block=b),
+            easy_session(MON + timedelta(days=2), sport="bike", hours=2.25, block=b),
+            easy_session(MON + timedelta(days=4), sport="run", hours=1.4, block=b),
+            easy_session(MON + timedelta(days=5), sport="strength", hours=0.25, block=b)]
+    assert "R13" not in rules_of(run(plan, goals=[TRI_GOAL]))
+
+
+# ─── passades dedicades que faltaven ─────────────────────────────────
+
+def test_r2_deload_every_fourth_week_passes():
+    b = mk_block(MON, weeks=5)
+    plan = []
+    for i, h in enumerate([7, 7, 7, 5.0, 7]):  # la 4a és descàrrega (≤72%)
+        plan += steady_week(MON + timedelta(weeks=i), h, b)
+    assert "R2" not in rules_of(run(plan, history_flat(MON)))
+
+
+def test_r6_long_growth_under_10pct_passes():
+    b = mk_block(MON, weeks=2)
+    plan = steady_week(MON, 6, b) + steady_week(MON + timedelta(weeks=1), 6, b)
+    for wk, hours in [(0, 1.0), (1, 1.08)]:
+        plan.append(Session(local_date=MON + timedelta(weeks=wk, days=5), sport="bike",
+                            session_type="long", title=f"llarga-{wk}",
+                            structure={"steps": [{"phase": "main",
+                                                  "duration_sec": int(hours * 3600),
+                                                  "target": {"type": "rpe", "value": 4}}]},
+                            duration_sec_target=int(hours * 3600), block=b))
+    assert "R6" not in rules_of(run(plan, history_flat(MON)))
+
+
+def test_r9_rehearsal_near_race_is_exempt():
+    plan, goal = taper_scenario(6)
+    plan.append(Session(local_date=goal.event_date - timedelta(days=5), sport="run",
+                        session_type="race_simulation", title="assaig",
+                        rehearses_goal=True,
+                        structure={"steps": [{"phase": "main", "duration_sec": 1800,
+                                              "target": {"type": "rpe", "value": 7}}]},
+                        duration_sec_target=1800, block=plan[-1].block))
+    assert "R9" not in rules_of(run(plan, history_flat(MON), goals=[goal]))
+
+
+def test_r10_easy_days_after_race_pass():
+    race_day = MON + timedelta(weeks=1, days=6)
+    goal = Goal(name="Cursa", discipline="run", event_date=race_day, priority="A",
+                profile={"target_times_sec": {"total": [8000, 7400, 6900]}})
+    b = mk_block(MON, weeks=3)
+    plan = steady_week(MON, 6, b) + steady_week(MON + timedelta(weeks=1), 6, b)
+    plan.append(race_session(race_day, b))
+    for i in range(1, 4):  # dies posteriors fàcils, cap sessió clau
+        plan.append(easy_session(race_day + timedelta(days=i), hours=0.4, block=b))
+    assert "R10" not in rules_of(run(plan, history_flat(MON), goals=[goal]))
+
+
+def test_r12_varied_week_passes():
+    assert "R12" not in rules_of(run(steady_week(MON, 6, mk_block(MON))))
+
+
+# ─── casos sintètics R2, R6, R9, R10 (violacions) ───────────────────
 
 def test_r2_five_weeks_without_deload_warn_far_from_race():
     b = mk_block(MON, weeks=5)
