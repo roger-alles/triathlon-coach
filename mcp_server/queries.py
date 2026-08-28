@@ -57,8 +57,10 @@ def recent_activities(conn, days: int) -> list[dict]:
 
 
 def form_curve(conn, days: int) -> list[dict]:
+    # arrodonit a 1 decimal: la precisió interna és de càlcul, no de lectura
     cur = conn.execute("""
-        select local_date, load, ctl, atl, tsb, monotony, strain
+        select local_date, round(load, 1) as load, round(ctl, 1) as ctl,
+               round(atl, 1) as atl, round(tsb, 1) as tsb, monotony
         from load_daily
         where local_date >= current_date - %s::int
         order by local_date""", (days,))
