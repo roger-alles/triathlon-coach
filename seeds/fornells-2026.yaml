@@ -28,8 +28,7 @@ goal:
         max_gradient_pct: 9.6
         notes: "Es Mercadal · Camí d'en Kane"
       - sport: run
-        distance_m: 8500
-        distance_uncertain: true   # el reglament diu 9 km, les fitxes de la cursa 8 — confirmar al briefing
+        distance_m: 9000           # confirmat per l'atleta el 28/08/2026
         notes: "Ses Salines + pujada a la torre de Fornells"
     target_times_sec:
       #              conservador  objectiu  optimista
@@ -37,9 +36,9 @@ goal:
       t1:          [ 180,  135,  105]
       bike:        [3960, 3720, 3480]
       t2:          [  90,   70,   55]
-      run:         [2190, 2040, 1950]
-      total:       [7980, 7350, 6780]
-      note: "Si el sector a peu són 9 km i no 8, suma ~240 s a cada columna."
+      run:         [2320, 2160, 2065]
+      total:       [8110, 7470, 6895]
+      note: "Sector a peu confirmat a 9 km (28/08/2026): +500 m sobre els 8,5 previstos, ~+2 min per columna al ritme de cada escenari."
     emphasis:
       limiter: swim                # on l'entrenament encara canvia el resultat
       protect: run                 # arma de l'atleta: mantenir, no millorar
@@ -49,19 +48,31 @@ goal:
 
 athlete_context:
   known:
-    run_10k_pr_sec: 2250           # 37:30
+    birth_date: 2005-01-01
+    run_10k_pr_sec: 2250           # 37:30 (10 km del 10/05/2026)
+    max_hr_observed: 211           # registrat al mateix 10 km, canell Garmin — creïble per edat però no és un test
     weekly_hours_before_plan: 5
     swim_experience: "~1 any de crol"
+  health:
+    knee: >
+      Molèsties lleugeres al genoll (abril 2026): protuberància òssia palpable
+      que fricciona quan força molt a la bici. Sense dolor persistent des de
+      llavors; reapareix puntualment després d'excessos (p. ex. la bici llarga
+      del 27/08/2026). No limitant a dia d'avui. El coach ha de vigilar-ho en
+      sessions dures de bici i preguntar-ho després d'excessos.
   unknown:                         # ⚠️ el sistema ha de funcionar amb aquests camps buits
-    - ftp_watts
+    - ftp_watts                    # sense potenciòmetre: la bici anirà per RPE indefinidament
     - css_sec_per_100m
     - threshold_pace_sec_km
-    - max_hr
   constraints:
     fixed_rest_day: monday
     gym: false                     # decisió explícita: no començar força a 4 setmanes vista
     layoff: "un mes sense nedar (juliol–agost 2026)"
     weekly_hours_ceiling: 8
+    pool_availability: "total, tots els dies; aigües obertes també disponibles"
+    power_meter: false
+  future_goals:
+    transpirinenca_2027: "en bicicleta de carretera; dies encara sense fixar"
 
 blocks:
 
@@ -636,7 +647,7 @@ blocks:
         - {sport: transition, transition: t1}
         - {sport: bike, distance_m: 34000}
         - {sport: transition, transition: t2}
-        - {sport: run, distance_m: 8500}
+        - {sport: run, distance_m: 9000}
 
 # ─────────────────────────────────────────────────────────────────────
 # Tasques de logística lligades a l'objectiu. No són entrenament i no compten
