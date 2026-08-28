@@ -57,10 +57,11 @@ def get_week(offset_weeks: int = 0) -> dict:
 
 
 @mcp.tool()
-def get_compliance() -> dict:
-    """Compliment planificat vs real. Fins a la F3 no hi ha pla carregat."""
+def get_compliance(weeks: int = 3) -> dict:
+    """Compliment planificat vs real: sessions de les últimes N setmanes i la
+    propera, amb estat (completed/partial/missed) i % d'adherència."""
     with _conn() as conn:
-        return queries.compliance(conn)
+        return queries.compliance(conn, weeks)
 
 
 if __name__ == "__main__":

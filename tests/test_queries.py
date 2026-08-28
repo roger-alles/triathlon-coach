@@ -6,7 +6,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from mcp_server.queries import summarize_by_sport, week_bounds
+from mcp_server.queries import summarize_by_sport, summarize_compliance, week_bounds
+
+
+def test_summarize_compliance_counts_and_adherence():
+    due = [{"status": "completed"}, {"status": "completed"}, {"status": "partial"},
+           {"status": "missed"}, {"status": "cancelled"}]
+    result = summarize_compliance(due)
+    assert result["totals"]["completed"] == 2
+    assert result["totals"]["missed"] == 1
+    # (2 + 0.5·1) / 4 resoltes = 62.5 -> 62; les cancel·lades no computen
+    assert result["adherence_pct"] == 62
+
+
+def test_summarize_compliance_empty_window():
+    assert summarize_compliance([])["adherence_pct"] is None
 
 
 def test_week_bounds_monday_to_sunday():

@@ -80,13 +80,40 @@ def week(conn, offset_weeks: int) -> dict:
     }
 
 
-def compliance(conn) -> dict:
-    """Planificat vs real. Fins que la F3 no carregui el pla, ho diu clarament."""
-    exists = conn.execute("""
-        select 1 from information_schema.tables
-        where table_schema = 'public' and table_name = 'plan_session'""").fetchone()
-    if not exists:
+def summarize_compliance(due_rows: list[dict]) -> dict:
+    """Totals sobre les sessions vençudes (dies ja acabats)."""
+    totals = {"completed": 0, "partial": 0, "missed": 0, "planned": 0,
+              "moved": 0, "cancelled": 0}
+    for r in due_rows:
+        if r["status"] in totals:
+            totals[r["status"]] += 1
+    resolved = totals["completed"] + totals["partial"] + totals["missed"]
+    adherence = (round((totals["completed"] + 0.5 * totals["partial"])
+                       / resolved * 100) if resolved else None)
+    return {"totals": totals, "adherence_pct": adherence}
+
+
+def compliance(conn, weeks: int = 3) -> dict:
+    """Planificat vs real: sessions de les últimes N setmanes i la propera."""
+    rows = conn.execute("""
+        select s.local_date, s.sport, s.title, s.priority, s.status,
+               s.duration_sec_target,
+               coalesce(sum(a.duration_sec), 0) as actual_sec,
+               count(a.id) as n_activities
+        from plan_session s
+        left join activity a on a.plan_session_id = s.id
+        where s.superseded_by is null
+          and s.local_date between current_date - %s::int and current_date + 7
+        group by s.id
+        order by s.local_date""", (weeks * 7,))
+    sessions = _rows_to_dicts(rows)
+    if not sessions:
         return {"status": "no_plan",
-                "detail": "Encara no hi ha pla carregat: les taules del pla arriben a la F3. "
-                          "De moment només hi ha activitats reals i corba de forma."}
-    raise NotImplementedError("compliance real: F3")
+                "detail": "Cap sessió planificada a la finestra: o el pla encara no "
+                          "està carregat, o és fora de rang."}
+    today = date.today().isoformat()
+    due = [s for s in sessions if s["local_date"] < today]
+    return {"status": "ok",
+            "window_weeks_back": weeks,
+            **summarize_compliance(due),
+            "sessions": sessions}

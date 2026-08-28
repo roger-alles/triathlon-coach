@@ -11,6 +11,7 @@ migrate:
 sync:
 	$(PY) -m ingest.sync
 	$(PY) -m ingest.load
+	$(PY) -m ingest.link
 
 test:
 	$(PY) -m pytest tests/ -q
