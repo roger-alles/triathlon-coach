@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "session-structure.schema.json",
+  "title": "Estructura d'una sessió planificada (spec §6)",
+  "description": "Contracte compartit backend/app. El validador canònic en Python és coach/structure.py; aquest schema n'és l'equivalent declaratiu per a zod/altres consumidors.",
+  "type": "object",
+  "oneOf": [
+    {"required": ["steps"]},
+    {"required": ["segments"]}
+  ],
+  "properties": {
+    "schema_version": {"type": "string"},
+    "steps": {"type": "array", "items": {"$ref": "#/$defs/step"}},
+    "segments": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/segment"}}
+  },
+  "$defs": {
+    "target": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["hr_zone", "ftp_pct", "pace_sec_km", "pace_pct_threshold",
+                           "css_pct", "pace_sec_100m", "rpe", "open"]},
+        "value": {"type": "number"},
+        "label": {"type": "string"},
+        "tolerance": {"type": "number"},
+        "comparator": {"enum": ["slower_than", "faster_than"]}
+      }
+    },
+    "simple_step": {
+      "type": "object",
+      "not": {"required": ["duration_sec", "distance_m"]},
+      "properties": {
+        "phase": {"enum": ["warmup", "main", "cooldown"]},
+        "duration_sec": {"type": "integer", "exclusiveMinimum": 0},
+        "distance_m": {"type": "number", "exclusiveMinimum": 0},
+        "target": {"$ref": "#/$defs/target"},
+        "note": {"type": "string"}
+      }
+    },
+    "step": {
+      "anyOf": [
+        {"$ref": "#/$defs/simple_step"},
+        {
+          "type": "object",
+          "required": ["repeats", "work"],
+          "properties": {
+            "phase": {"enum": ["warmup", "main", "cooldown"]},
+            "repeats": {"type": "integer", "minimum": 1},
+            "work": {"$ref": "#/$defs/simple_step"},
+            "recovery": {"$ref": "#/$defs/simple_step"}
+          }
+        }
+      ]
+    },
+    "segment": {
+      "type": "object",
+      "required": ["sport"],
+      "properties": {
+        "sport": {"enum": ["swim", "bike", "run", "transition"]},
+        "transition": {"enum": ["t1", "t2"]},
+        "timed": {"type": "boolean"},
+        "venue": {"type": "string"},
+        "duration_sec": {"type": "integer", "exclusiveMinimum": 0},
+        "distance_m": {"type": "number", "exclusiveMinimum": 0},
+        "target": {"$ref": "#/$defs/target"},
+        "steps": {"type": "array", "items": {"$ref": "#/$defs/step"}},
+        "note": {"type": "string"}
+      }
+    }
+  }
+}

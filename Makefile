@@ -1,6 +1,9 @@
 PY := .venv/bin/python
 
-.PHONY: sync migrate test
+.PHONY: sync migrate test validate
+
+validate:
+	$(PY) -m coach.plan_loader
 
 migrate:
 	$(PY) migrate.py
