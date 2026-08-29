@@ -1,6 +1,6 @@
 jest.mock('@react-native-async-storage/async-storage', () => ({}));
 
-const mockCreateClient = jest.fn(() => ({ marker: 'client' }));
+const mockCreateClient = jest.fn((..._args: unknown[]) => ({ marker: 'client' }));
 jest.mock('@supabase/supabase-js', () => ({ createClient: mockCreateClient }));
 
 const URL = 'https://example.supabase.co';
@@ -21,7 +21,7 @@ test("peta a l'arrencada si falta la configuració (millor que fallar en silenci
 test("crea el client amb la URL i la clau de l'entorn, amb sessió persistent", () => {
   const { supabase } = require('./supabase');
   expect(supabase).toEqual({ marker: 'client' });
-  const [url, key, opts] = mockCreateClient.mock.calls[0];
+  const [url, key, opts] = mockCreateClient.mock.calls[0] as [string, string, any];
   expect(url).toBe(URL);
   expect(key).toBe(KEY);
   expect(opts.auth.persistSession).toBe(true);
