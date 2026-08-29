@@ -15,3 +15,6 @@ sync:
 
 test:
 	$(PY) -m pytest tests/ -q
+
+report:
+	@bash scripts/latest-report.sh

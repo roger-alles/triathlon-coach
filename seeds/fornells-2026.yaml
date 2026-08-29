@@ -60,6 +60,8 @@ athlete_context:
       llavors; reapareix puntualment després d'excessos (p. ex. la bici llarga
       del 27/08/2026). No limitant a dia d'avui. El coach ha de vigilar-ho en
       sessions dures de bici i preguntar-ho després d'excessos.
+      29/08: l'atleta confirma que el genoll està BÉ després de la bici
+      llarga del 27/08 — cap fricció ni molèstia nova.
   unknown:                         # ⚠️ el sistema ha de funcionar amb aquests camps buits
     - ftp_watts                    # sense potenciòmetre: la bici anirà per RPE indefinidament
     - css_sec_per_100m
