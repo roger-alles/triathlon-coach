@@ -17,6 +17,19 @@ function chainResolving(result: unknown, terminal?: string) {
 
 beforeEach(() => jest.clearAllMocks());
 
+test('la setmana comença en dilluns, sigui quin sigui el dia', () => {
+  const { weekDaysISO } = require('./api');
+  // dissabte 29/08/2026 -> dilluns 24 a diumenge 30
+  const days = weekDaysISO(new Date(2026, 7, 29));
+  expect(days[0]).toBe('2026-08-24');
+  expect(days[6]).toBe('2026-08-30');
+  expect(days).toHaveLength(7);
+  // un dilluns es queda com a primer dia
+  expect(weekDaysISO(new Date(2026, 7, 24))[0]).toBe('2026-08-24');
+  // un diumenge pertany a la setmana que va començar 6 dies enrere
+  expect(weekDaysISO(new Date(2026, 7, 30))[0]).toBe('2026-08-24');
+});
+
 test('localDateISO usa la zona horària local, no UTC', () => {
   expect(localDateISO(new Date(2026, 7, 29, 0, 30))).toBe('2026-08-29');
   expect(localDateISO(new Date(2026, 11, 31, 23, 59))).toBe('2026-12-31');
@@ -60,6 +73,22 @@ test('les sessions del dia només inclouen la versió vigent (superseded_by null
   expect(chain.eq).toHaveBeenCalledWith('local_date', '2026-08-29');
   expect(chain.is).toHaveBeenCalledWith('superseded_by', null);
   expect(sessions).toEqual(rows);
+});
+
+test('sessions i activitats de la setmana es demanen pel rang de dates', async () => {
+  const { getSessionsForRange, getActivitiesForRange } = require('./api');
+  const chain = chainResolving({ data: [], error: null });
+  chain.gte = jest.fn(() => chain);
+  chain.lte = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+
+  await getSessionsForRange('2026-08-24', '2026-08-30');
+  expect(chain.gte).toHaveBeenCalledWith('local_date', '2026-08-24');
+  expect(chain.lte).toHaveBeenCalledWith('local_date', '2026-08-30');
+  expect(chain.is).toHaveBeenCalledWith('superseded_by', null);
+
+  await getActivitiesForRange('2026-08-24', '2026-08-30');
+  expect(mockFrom).toHaveBeenLastCalledWith('activity');
 });
 
 test('els errors de la BD no es traguen en silenci', async () => {

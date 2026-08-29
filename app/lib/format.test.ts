@@ -1,4 +1,17 @@
-import { formatDuration, formatStep, formatTarget, sportLabel, verdictColor } from './format';
+import {
+  formatDateCa,
+  formatDuration,
+  formatStep,
+  formatTarget,
+  sportLabel,
+  verdictColor,
+} from './format';
+
+test('dates en català, amb apòstrof on toca', () => {
+  expect(formatDateCa(new Date(2026, 7, 29))).toBe("Dissabte 29 d'agost");
+  expect(formatDateCa(new Date(2026, 8, 27))).toBe('Diumenge 27 de setembre');
+  expect(formatDateCa(new Date(2026, 3, 1))).toBe("Dimecres 1 d'abril");
+});
 
 test('durades en segons -> text llegible', () => {
   expect(formatDuration(600)).toBe('10 min');
@@ -38,6 +51,20 @@ test('passos simples: durada o distància amb fase', () => {
   expect(formatStep({ phase: 'cooldown', duration_sec: 600, target: { type: 'rpe', value: 3 } })).toBe(
     'Final suau — 10 min · RPE 3'
   );
+});
+
+test('estats de sessió: color i etiqueta', () => {
+  const { statusColor, statusLabel } = require('./format');
+  expect(statusColor('completed')).toBe('#2e9e5b');
+  expect(statusColor('partial')).toBe('#e6a817');
+  expect(statusColor('missed')).toBe('#d64541');
+  expect(statusColor('planned')).toBe('#8a8a8a');
+  expect(statusLabel('completed')).toBe('feta');
+  expect(statusLabel('partial')).toBe('a mitges');
+  expect(statusLabel('missed')).toBe('no feta');
+  expect(statusLabel('planned')).toBe('pendent');
+  expect(statusLabel('cancelled')).toBe('cancel·lada');
+  expect(statusLabel('moved')).toBe('moguda');
 });
 
 test('semàfor i esports', () => {

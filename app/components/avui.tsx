@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
 
@@ -18,7 +19,7 @@ import {
   getSessionsForDay,
   localDateISO,
 } from '@/lib/api';
-import { formatDuration, formatStep, sportLabel, verdictColor } from '@/lib/format';
+import { formatDateCa, formatDuration, formatStep, sportLabel, verdictColor } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 
 const VERDICT_LABEL: Record<string, string> = { green: 'VERD', amber: 'ÀMBAR', red: 'VERMELL' };
@@ -29,6 +30,7 @@ export default function Avui() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const insets = useSafeAreaInsets();
 
   const load = useCallback(async () => {
     setError(null);
@@ -58,10 +60,12 @@ export default function Avui() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />
       }>
+      <ThemedText style={styles.date}>{formatDateCa(new Date())}</ThemedText>
+
       {error && <ThemedText style={styles.error}>{error}</ThemedText>}
 
       {report ? (
@@ -73,12 +77,15 @@ export default function Avui() {
         !error && <ThemedText style={styles.muted}>Encara no hi ha informe del coach.</ThemedText>
       )}
 
-      {sessions.map((s) => (
+      {sessions.map((s, i) => (
         <View key={s.id} style={styles.card}>
-          <ThemedText style={styles.cardTitle}>{s.title}</ThemedText>
+          <ThemedText style={styles.cardTitle}>
+            {sessions.length > 1 ? `Sessió d'avui (${i + 1} de ${sessions.length})` : "Sessió d'avui"}
+          </ThemedText>
           <ThemedText style={styles.cardMeta}>
             {sportLabel(s.sport)}
             {s.duration_sec_target != null && ` · ${formatDuration(s.duration_sec_target)}`}
+            {` · ${s.title}`}
             {s.is_test && ' · TEST'}
           </ThemedText>
           {(s.structure?.steps ?? []).map((step, i) => (
@@ -115,6 +122,7 @@ export default function Avui() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 16, gap: 12, paddingBottom: 48 },
+  date: { fontSize: 22, fontWeight: '800' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   banner: { borderRadius: 12, padding: 16 },
   bannerVerdict: { color: '#fff', fontWeight: '800', fontSize: 13, letterSpacing: 2 },

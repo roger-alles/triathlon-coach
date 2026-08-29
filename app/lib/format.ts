@@ -99,3 +99,38 @@ const SPORT_LABELS: Record<string, string> = {
 export function sportLabel(sport: string): string {
   return SPORT_LABELS[sport] ?? sport;
 }
+
+const STATUS_COLORS: Record<string, string> = {
+  completed: '#2e9e5b',
+  partial: '#e6a817',
+  missed: '#d64541',
+};
+
+export function statusColor(status: string): string {
+  return STATUS_COLORS[status] ?? '#8a8a8a';
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  completed: 'feta',
+  partial: 'a mitges',
+  missed: 'no feta',
+  planned: 'pendent',
+  cancelled: 'cancel·lada',
+  moved: 'moguda',
+};
+
+export function statusLabel(status: string): string {
+  return STATUS_LABELS[status] ?? status;
+}
+
+const WEEKDAYS = ['Diumenge', 'Dilluns', 'Dimarts', 'Dimecres', 'Dijous', 'Divendres', 'Dissabte'];
+const MONTHS = [
+  'gener', 'febrer', 'març', 'abril', 'maig', 'juny',
+  'juliol', 'agost', 'setembre', 'octubre', 'novembre', 'desembre',
+];
+
+export function formatDateCa(d: Date): string {
+  const month = MONTHS[d.getMonth()];
+  const de = /^[aeiou]/.test(month) ? "d'" : 'de ';
+  return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${de}${month}`;
+}
