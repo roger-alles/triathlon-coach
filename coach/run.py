@@ -227,6 +227,8 @@ def main() -> None:
     parser.add_argument("report_type", choices=["daily", "weekly"])
     parser.add_argument("--dry-run", action="store_true",
                         help="cicle complet però sense tocar el pla")
+    parser.add_argument("--tomorrow", action="store_true",
+                        help="preview del vespre: el context es construeix per a demà")
     args = parser.parse_args()
 
     load_dotenv(ROOT / ".env")
@@ -234,9 +236,14 @@ def main() -> None:
     if not url:
         sys.exit("Falta DATABASE_URL al .env.")
     today = date.today()
+    # el preview mira demà, però la validació "res al passat" segueix ancorada
+    # al dia real: les sessions d'avui encara no són passat a les 21:30
+    target = today + timedelta(days=1) if args.tomorrow else today
 
     with psycopg.connect(url) as conn:
-        snapshot = build_context(conn, today)
+        snapshot = build_context(conn, target)
+        if args.tomorrow:
+            snapshot["mode"] = "evening_preview"
         plan, goal, history, athlete = plan_from_db(conn)
 
         result = coach_cycle(
@@ -249,7 +256,7 @@ def main() -> None:
         if result["accepted"] and not args.dry_run:
             with conn.transaction():
                 applied = apply_to_db(conn, result["output"]["session_changes"])
-        write_report(conn, args.report_type, snapshot, result, today, args.dry_run)
+        write_report(conn, args.report_type, snapshot, result, target, args.dry_run)
 
     output = result["output"]
     status = "ACCEPTAT" if result["accepted"] else "DESCARTAT"

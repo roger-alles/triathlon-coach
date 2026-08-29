@@ -26,7 +26,7 @@ class _FakeClient:
         self.kwargs = kwargs
         return SimpleNamespace(
             content=[SimpleNamespace(type="text", text=json.dumps(VALID_OUTPUT))],
-            model=kwargs["model"],
+            model=kwargs["model"], stop_reason="end_turn",
             usage=SimpleNamespace(input_tokens=9000, output_tokens=700),
         )
 

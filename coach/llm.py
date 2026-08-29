@@ -22,7 +22,9 @@ import anthropic
 ROOT = Path(__file__).parent.parent
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 DEFAULT_MODEL = "claude-sonnet-5"
-MAX_TOKENS = 8000
+# els thinking tokens (adaptatius, activats per defecte) comparteixen aquest
+# pressupost amb la resposta: curt de tokens = JSON tallat a mitges
+MAX_TOKENS = 16000
 
 # claus de documentació ($schema, title...) fora: a l'API només hi va l'esquema
 OUTPUT_SCHEMA = {
@@ -56,6 +58,10 @@ class CoachLLM:
             output_config={"format": {"type": "json_schema",
                                       "schema": OUTPUT_SCHEMA}},
         )
+        if response.stop_reason != "end_turn":
+            raise RuntimeError(
+                f"resposta incompleta del model (stop_reason="
+                f"{response.stop_reason}): no es pot confiar en el JSON")
         text = next(b.text for b in response.content if b.type == "text")
         usage = {"model": response.model,
                  "input_tokens": response.usage.input_tokens,
