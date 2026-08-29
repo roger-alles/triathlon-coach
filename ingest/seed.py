@@ -6,7 +6,7 @@ actualitza en lloc de duplicar.
 
   goal          -> name
   plan_block    -> (goal_id, start_date)
-  plan_session  -> (goal_id, local_date, sport, title)
+  plan_session  -> (goal_id, local_date, sport)  # una sessió per esport i dia; el títol pot canviar
   logistics_task-> (goal_id, local_date, title)
 
 Ús:
@@ -110,9 +110,9 @@ def upsert_block(conn, goal_id: int, b: dict) -> int:
 
 
 def upsert_session(conn, goal_id: int, block_id: int, row: dict) -> int:
-    key = (goal_id, row["local_date"], row["sport"], row["title"])
+    key = (goal_id, row["local_date"], row["sport"])
     found = conn.execute("""select id from plan_session where goal_id=%s
-                            and local_date=%s and sport=%s and title=%s
+                            and local_date=%s and sport=%s
                             and superseded_by is null""", key).fetchone()
     params = {k: v for k, v in row.items() if not k.startswith("_")}
     params["structure"] = _jsonb(params["structure"])
@@ -121,7 +121,7 @@ def upsert_session(conn, goal_id: int, block_id: int, row: dict) -> int:
     if found:
         params["id"] = found[0]
         conn.execute("""update plan_session set block_id=%(block_id)s,
-            session_type=%(session_type)s, structure=%(structure)s,
+            title=%(title)s, session_type=%(session_type)s, structure=%(structure)s,
             duration_sec_target=%(duration_sec_target)s,
             distance_m_target=%(distance_m_target)s, priority=%(priority)s,
             rationale=%(rationale)s, is_test=%(is_test)s, test_spec=%(test_spec)s,

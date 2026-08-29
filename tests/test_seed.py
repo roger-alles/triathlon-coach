@@ -52,3 +52,47 @@ def test_resolve_chains_links_brick_to_same_day_parent():
     chains = resolve_chains(rows)
     assert chains == [((date(2026, 9, 5), "brick", "Brick"),
                        (date(2026, 9, 5), "bike", "Llarga"))]
+
+
+class _FakeResult:
+    def __init__(self, row):
+        self._row = row
+
+    def fetchone(self):
+        return self._row
+
+
+class _FakeConn:
+    """Registra les queries; retorna `found` al select i id 99 a l'insert."""
+
+    def __init__(self, found=None):
+        self.calls = []
+        self._found = found
+
+    def execute(self, sql, params=None):
+        self.calls.append((sql, params))
+        if sql.strip().lower().startswith("select"):
+            return _FakeResult(self._found)
+        return _FakeResult((99,))
+
+
+def test_upsert_session_matches_by_date_and_sport_when_title_changes():
+    # Reprogramar una sessió canviant-li el títol ha d'ACTUALITZAR la fila
+    # existent (la BD només permet una sessió per esport i dia), no inserir-ne una.
+    from ingest.seed import upsert_session
+
+    row = {"local_date": date(2026, 9, 1), "sport": "swim", "session_type": "test",
+           "title": "Test de referència (reprogramat)", "priority": "key",
+           "structure": {"steps": []}, "duration_sec_target": 2400,
+           "distance_m_target": None, "rationale": None, "is_test": True,
+           "test_spec": {"metric": "swim_continuous"}, "rehearses_goal": False,
+           "is_goal_event": False, "transition_practice": None}
+    conn = _FakeConn(found=(7,))
+    assert upsert_session(conn, goal_id=1, block_id=2, row=row) == 7
+
+    select_sql, select_params = conn.calls[0]
+    assert "title" not in select_sql          # el match no depèn del títol
+    assert select_params == (1, date(2026, 9, 1), "swim")
+
+    update_sql = conn.calls[1][0]
+    assert "title=%(title)s" in update_sql    # el títol nou es persisteix

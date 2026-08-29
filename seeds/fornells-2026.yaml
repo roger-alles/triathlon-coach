@@ -61,7 +61,8 @@ athlete_context:
       del 27/08/2026). No limitant a dia d'avui. El coach ha de vigilar-ho en
       sessions dures de bici i preguntar-ho després d'excessos.
       29/08: l'atleta confirma que el genoll està BÉ després de la bici
-      llarga del 27/08 — cap fricció ni molèstia nova.
+      llarga del 27/08 — cap fricció ni molèstia nova. Cames sense agulletes,
+      només pesadesa matinal normal.
   unknown:                         # ⚠️ el sistema ha de funcionar amb aquests camps buits
     - ftp_watts                    # sense potenciòmetre: la bici anirà per RPE indefinidament
     - css_sec_per_100m
@@ -203,17 +204,24 @@ blocks:
 
   - date: 2026-09-01
     sport: swim
-    session_type: technique
-    title: "Tècnica + sèries curtes"
+    session_type: test
+    title: "Test de referència (reprogramat del 28/08)"
     priority: key
-    duration_sec_target: 2700
-    distance_m_target: 1700
+    is_test: true
+    test:
+      metric: swim_continuous
+      protocol: "Nedar seguit i còmode fins a un màxim de 800 m; anotar metres i temps per 100. AMB rellotge."
+      records: [distance_m, pace_sec_100m]
+    duration_sec_target: 2400
+    distance_m_target: 1500
+    rationale: >
+      Reprogramat el 29/08 a petició de l'atleta: el test del 28/08 va quedar incomplet
+      (25 min continus sense rellotge). Aquí, amb cames fresques post-descans de dilluns.
     structure:
       steps:
         - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
-        - {phase: main, repeats: 10, work: {distance_m: 50, target: {type: open}, note: "tècnica"}, recovery: {duration_sec: 15}}
-        - {phase: main, repeats: 6, work: {distance_m: 100, target: {type: rpe, value: 6}, note: "ritme constant"}, recovery: {duration_sec: 25}}
-        - {phase: main, repeats: 6, work: {distance_m: 50, target: {type: rpe, value: 6}}, recovery: {duration_sec: 20}}
+        - {phase: main, repeats: 8, work: {distance_m: 50, target: {type: open}, note: "tècnica"}, recovery: {duration_sec: 20}}
+        - {phase: main, distance_m: 800, target: {type: rpe, value: 6}, note: "continu, cronometrat, màxim 800"}
         - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
 
   - date: 2026-09-02
@@ -374,7 +382,7 @@ blocks:
       metric: swim_continuous
       protocol: "800 m seguits a piscina, cronometrats."
       records: [duration_sec, pace_sec_100m]
-      compare_with: 2026-08-28
+      compare_with: 2026-09-01
     duration_sec_target: 2700
     rationale: "Aquí es veu si la freqüència està funcionant."
     structure:
