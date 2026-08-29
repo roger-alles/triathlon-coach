@@ -142,6 +142,21 @@ test("l'actualització subjectiva propaga l'error de la BD (p. ex. RLS)", async 
   await expect(updateActivitySubjective(3, { perceived_effort: 5 })).rejects.toThrow('permission denied');
 });
 
+test("l'objectiu actiu i la seva logística es llegeixen sencers", async () => {
+  const { getActiveGoal, getLogistics } = require('./api');
+  const goal = { id: 2, name: 'Fornells', event_date: '2026-09-27', profile: { location: 'Menorca' } };
+  const chain = chainResolving({ data: goal, error: null }, 'maybeSingle');
+  mockFrom.mockReturnValue(chain);
+  expect(await getActiveGoal()).toEqual(goal);
+  expect(chain.eq).toHaveBeenCalledWith('status', 'active');
+
+  const rows = [{ id: 1, local_date: '2026-09-24', title: 'Revisió', detail: null, blocking: true, done: false }];
+  const chain2 = chainResolving({ data: rows, error: null });
+  mockFrom.mockReturnValue(chain2);
+  expect(await getLogistics(2)).toEqual(rows);
+  expect(chain2.eq).toHaveBeenCalledWith('goal_id', 2);
+});
+
 test('els errors de la BD no es traguen en silenci', async () => {
   mockFrom.mockReturnValue(chainResolving({ data: null, error: { message: 'permission denied' } }, 'maybeSingle'));
   await expect(getLatestDailyReport()).rejects.toThrow('permission denied');

@@ -53,6 +53,20 @@ test('passos simples: durada o distància amb fase', () => {
   );
 });
 
+test('temps de cursa: mm:ss fins a una hora, h:mm:ss després', () => {
+  const { formatClock } = require('./format');
+  expect(formatClock(90)).toBe('1:30');
+  expect(formatClock(2320)).toBe('38:40');
+  expect(formatClock(3600)).toBe('1:00:00');
+  expect(formatClock(7470)).toBe('2:04:30');
+});
+
+test('daysUntil compta dies de calendari, no de 24h exactes', () => {
+  const { daysUntil } = require('./format');
+  expect(daysUntil('2026-09-27', new Date(2026, 7, 29, 23, 0))).toBe(29);
+  expect(daysUntil('2026-09-27', new Date(2026, 8, 27, 6, 0))).toBe(0);
+});
+
 test('estats de sessió: color i etiqueta', () => {
   const { statusColor, statusLabel } = require('./format');
   expect(statusColor('completed')).toBe('#2e9e5b');

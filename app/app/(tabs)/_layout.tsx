@@ -37,6 +37,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="chart.line.uptrend.xyaxis" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="objectius"
+        options={{
+          title: 'Fornells',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="flag.checkered" color={color} />,
+        }}
+      />
     </Tabs>
   );
 }

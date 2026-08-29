@@ -100,6 +100,21 @@ export function sportLabel(sport: string): string {
   return SPORT_LABELS[sport] ?? sport;
 }
 
+export function formatClock(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.round(sec % 60);
+  const mmss = `${m}:${String(s).padStart(2, '0')}`;
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : mmss;
+}
+
+export function daysUntil(dateISO: string, from: Date = new Date()): number {
+  const [y, m, d] = dateISO.split('-').map(Number);
+  const target = new Date(y, m - 1, d);
+  const start = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  return Math.round((target.getTime() - start.getTime()) / 86400000);
+}
+
 const STATUS_COLORS: Record<string, string> = {
   completed: '#2e9e5b',
   partial: '#e6a817',

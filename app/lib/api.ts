@@ -140,6 +140,44 @@ export async function getFormSeries(sinceISO: string): Promise<FormDay[]> {
   }));
 }
 
+export type Goal = {
+  id: number;
+  name: string;
+  event_date: string;
+  profile: Record<string, any>;
+};
+
+export type LogisticsTask = {
+  id: number;
+  local_date: string;
+  title: string;
+  detail: string | null;
+  blocking: boolean;
+  done: boolean;
+};
+
+export async function getActiveGoal(): Promise<Goal | null> {
+  const { data, error } = await supabase
+    .from('goal')
+    .select('id, name, event_date, profile')
+    .eq('status', 'active')
+    .order('event_date')
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as Goal | null;
+}
+
+export async function getLogistics(goalId: number): Promise<LogisticsTask[]> {
+  const { data, error } = await supabase
+    .from('logistics_task')
+    .select('id, local_date, title, detail, blocking, done')
+    .eq('goal_id', goalId)
+    .order('local_date');
+  if (error) throw new Error(error.message);
+  return (data ?? []) as LogisticsTask[];
+}
+
 export async function getLatestDailyReport(): Promise<DailyReport | null> {
   const { data, error } = await supabase
     .from('coach_report')
