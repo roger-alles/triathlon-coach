@@ -44,6 +44,27 @@ test("els tres números d'avui, amb les seves etiquetes en llenguatge d'atleta",
   expect(screen.getByText('Frescor')).toBeOnTheScreen();
 });
 
+test('el selector de rang hi és i canvia la finestra del gràfic', async () => {
+  const { userEvent } = require('@testing-library/react-native');
+  // 40 dies de sèrie: amb rang 30 el gràfic comença 30 dies enrere
+  const days = Array.from({ length: 40 }, (_, i) => ({
+    local_date: `2026-07-${String(i + 1).padStart(2, '0')}`,
+    load: 0, ctl: 40 + i * 0.1, atl: 50, tsb: -10,
+  }));
+  mockSeries.mockResolvedValue(days);
+  await renderForma();
+
+  expect(await screen.findByText('7 dies')).toBeOnTheScreen();
+  expect(screen.getByText('30 dies')).toBeOnTheScreen();
+  expect(screen.getByText('90 dies')).toBeOnTheScreen();
+  // per defecte 30 dies: l'eix comença al dia 11 de la sèrie (40-30+1)
+  expect(screen.getByText(/07-11 →/)).toBeOnTheScreen();
+
+  const user = userEvent.setup();
+  await user.press(screen.getByText('7 dies'));
+  expect(screen.getByText(/07-34 →/)).toBeOnTheScreen();
+});
+
 test('sense dades encara: missatge, no pantalla trencada', async () => {
   mockSeries.mockResolvedValue([]);
   await renderForma();

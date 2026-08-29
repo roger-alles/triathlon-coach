@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Line, Polyline } from 'react-native-svg';
 
 import { ThemedText } from '@/components/themed-text';
+import { TouchableOpacity } from 'react-native';
 import { FormDay, getFormSeries, localDateISO } from '@/lib/api';
 import { extent, polylinePoints } from '@/lib/chart';
 
@@ -24,6 +25,7 @@ export default function Forma() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [rangeDays, setRangeDays] = useState(30);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
@@ -53,12 +55,10 @@ export default function Forma() {
   }
 
   const today = series.at(-1);
+  const shown = series.slice(-rangeDays);
   const chartWidth = width - 32;
-  const { min, max } = series.length
-    ? extent(
-        [series.map((d) => d.ctl), series.map((d) => d.atl), series.map((d) => d.tsb)],
-        0.05
-      )
+  const { min, max } = shown.length
+    ? extent([shown.map((d) => d.ctl), shown.map((d) => d.atl), shown.map((d) => d.tsb)], 0.05)
     : { min: 0, max: 1 };
   const zeroY = CHART_HEIGHT - ((0 - min) / (max - min || 1)) * CHART_HEIGHT;
 
@@ -84,24 +84,39 @@ export default function Forma() {
       )}
 
       {series.length > 1 && (
+        <View style={styles.rangeRow}>
+          {[7, 30, 90].map((d) => (
+            <TouchableOpacity
+              key={d}
+              style={[styles.rangeButton, rangeDays === d && styles.rangeActive]}
+              onPress={() => setRangeDays(d)}>
+              <ThemedText style={[styles.rangeText, rangeDays === d && styles.rangeTextActive]}>
+                {d} dies
+              </ThemedText>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {shown.length > 1 && (
         <View>
           <Svg width={chartWidth} height={CHART_HEIGHT}>
             <Line x1={0} y1={zeroY} x2={chartWidth} y2={zeroY} stroke="#8a8a8a" strokeWidth={1} strokeDasharray="4 4" />
             <Polyline
-              points={polylinePoints(series.map((d) => d.ctl), chartWidth, CHART_HEIGHT, min, max)}
+              points={polylinePoints(shown.map((d) => d.ctl), chartWidth, CHART_HEIGHT, min, max)}
               fill="none" stroke={COLORS.ctl} strokeWidth={2}
             />
             <Polyline
-              points={polylinePoints(series.map((d) => d.atl), chartWidth, CHART_HEIGHT, min, max)}
+              points={polylinePoints(shown.map((d) => d.atl), chartWidth, CHART_HEIGHT, min, max)}
               fill="none" stroke={COLORS.atl} strokeWidth={2}
             />
             <Polyline
-              points={polylinePoints(series.map((d) => d.tsb), chartWidth, CHART_HEIGHT, min, max)}
+              points={polylinePoints(shown.map((d) => d.tsb), chartWidth, CHART_HEIGHT, min, max)}
               fill="none" stroke={COLORS.tsb} strokeWidth={2.5}
             />
           </Svg>
           <ThemedText style={styles.axis}>
-            {series[0].local_date.slice(5)} → {series.at(-1)!.local_date.slice(5)} · la línia de punts és el zero de frescor
+            {shown[0].local_date.slice(5)} → {shown.at(-1)!.local_date.slice(5)} · la línia de punts és el zero de frescor
           </ThemedText>
         </View>
       )}
@@ -136,7 +151,12 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   numbers: { flexDirection: 'row', justifyContent: 'space-around' },
   metric: { alignItems: 'center' },
-  metricValue: { fontSize: 32, fontWeight: '800' },
+  metricValue: { fontSize: 32, lineHeight: 40, fontWeight: '800' },
+  rangeRow: { flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  rangeButton: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: 'rgba(127,127,127,0.12)' },
+  rangeActive: { backgroundColor: '#3b82c4' },
+  rangeText: { fontSize: 13 },
+  rangeTextActive: { color: '#fff', fontWeight: '700' },
   metricLabel: { fontSize: 14, fontWeight: '600' },
   metricSub: { fontSize: 11, opacity: 0.5 },
   axis: { fontSize: 11, opacity: 0.5, textAlign: 'center', marginTop: 4 },
