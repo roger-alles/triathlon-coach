@@ -91,6 +91,22 @@ test('sessions i activitats de la setmana es demanen pel rang de dates', async (
   expect(mockFrom).toHaveBeenLastCalledWith('activity');
 });
 
+test('la corba de forma converteix els numeric (que arriben com a strings)', async () => {
+  const { getFormSeries } = require('./api');
+  const rows = [
+    { local_date: '2026-08-28', load: '20.8', ctl: '45.405', atl: '69.9728', tsb: '-32.1632' },
+    { local_date: '2026-08-29', load: '0', ctl: '44.3239', atl: '59.9767', tsb: '-24.5678' },
+  ];
+  const chain = chainResolving({ data: rows, error: null });
+  chain.gte = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+
+  const series = await getFormSeries('2026-08-01');
+  expect(mockFrom).toHaveBeenCalledWith('load_daily');
+  expect(series[0]).toEqual({ local_date: '2026-08-28', load: 20.8, ctl: 45.4, atl: 70, tsb: -32.2 });
+  expect(series[1].tsb).toBe(-24.6);
+});
+
 test('els errors de la BD no es traguen en silenci', async () => {
   mockFrom.mockReturnValue(chainResolving({ data: null, error: { message: 'permission denied' } }, 'maybeSingle'));
   await expect(getLatestDailyReport()).rejects.toThrow('permission denied');

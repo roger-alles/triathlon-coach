@@ -79,6 +79,33 @@ export async function getActivitiesForRange(startISO: string, endISO: string): P
   return (data ?? []) as Activity[];
 }
 
+export type FormDay = {
+  local_date: string;
+  load: number;
+  ctl: number;
+  atl: number;
+  tsb: number;
+};
+
+const round1 = (v: unknown) => Math.round(Number(v) * 10) / 10;
+
+export async function getFormSeries(sinceISO: string): Promise<FormDay[]> {
+  const { data, error } = await supabase
+    .from('load_daily')
+    .select('local_date, load, ctl, atl, tsb')
+    .gte('local_date', sinceISO)
+    .order('local_date');
+  if (error) throw new Error(error.message);
+  // PostgREST serialitza els numeric de Postgres com a strings: es converteixen aquí.
+  return (data ?? []).map((r) => ({
+    local_date: r.local_date,
+    load: round1(r.load),
+    ctl: round1(r.ctl),
+    atl: round1(r.atl),
+    tsb: round1(r.tsb),
+  }));
+}
+
 export async function getLatestDailyReport(): Promise<DailyReport | null> {
   const { data, error } = await supabase
     .from('coach_report')
