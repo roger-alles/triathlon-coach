@@ -154,17 +154,18 @@ blocks:
 
   - date: 2026-08-29
     sport: run
-    session_type: intervals
-    title: "Primeres sèries"
+    session_type: easy
+    title: "Rodatge suau (canvi del coach)"
     priority: key
-    duration_sec_target: 3300
-    distance_m_target: 11000
-    rationale: "Conservador a posta: fa mesos que només fa rodatges."
+    duration_sec_target: 2400
+    rationale: >
+      Substitueix les "Primeres sèries" (5×1000 a 3:42/km, més ràpid que el PR
+      de 10k de l'atleta): proposta del coach del 29/08 amb TSB -24.6 per la
+      bici llarga del 27/08 i un bloc que mana "cap sessió dura". Aprovada per
+      l'atleta el mateix dia. La qualitat de cursa torna el 4/09.
     structure:
       steps:
-        - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
-        - {phase: main, repeats: 5, work: {distance_m: 1000, target: {type: pace_sec_km, value: 222, tolerance: 3}}, recovery: {duration_sec: 90}}
-        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
+        - {phase: main, duration_sec: 2400, target: {type: rpe, value: 3}, note: "continu, sense ritmes exigents"}
 
   - date: 2026-08-30
     sport: swim
