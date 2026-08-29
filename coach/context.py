@@ -121,6 +121,17 @@ def _recent_notes(conn, today: date) -> list[dict]:
     return queries._rows_to_dicts(cur)
 
 
+def _recent_answers(conn, today: date) -> list[dict]:
+    """Respostes de l'atleta (des de l'app) a preguntes d'informes anteriors."""
+    cur = conn.execute("""
+        select created_at, question, answer
+        from athlete_answer
+        where created_at > %s
+        order by created_at desc
+        limit 10""", (today - timedelta(days=7),))
+    return queries._rows_to_dicts(cur)
+
+
 def _past_compliance(conn, today: date) -> dict:
     """El compliment del coach mira enrere; el futur ja és a plan_next_14d."""
     result = queries.compliance(conn, COMPLIANCE_WEEKS)
@@ -145,5 +156,6 @@ def build_context(conn, today: date | None = None) -> dict:
         "compliance": _past_compliance(conn, today),
         "plan_next_14d": _plan_ahead(conn, today),
         "recent_athlete_notes": _recent_notes(conn, today),
+        "athlete_answers_last_7d": _recent_answers(conn, today),
     }
     return compact(context)

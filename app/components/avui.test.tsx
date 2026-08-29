@@ -1,14 +1,19 @@
 jest.mock('@/lib/api', () => ({
   getLatestDailyReport: jest.fn(),
   getSessionsForDay: jest.fn(),
+  getAnswers: jest.fn(),
+  sendAnswer: jest.fn(),
   localDateISO: () => '2026-08-29',
 }));
 jest.mock('@/lib/supabase', () => ({ supabase: { auth: { signOut: jest.fn() } } }));
 
-import { render, screen } from '@testing-library/react-native';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getLatestDailyReport, getSessionsForDay } from '@/lib/api';
+import { getAnswers, getLatestDailyReport, getSessionsForDay, sendAnswer } from '@/lib/api';
 import Avui from './avui';
+
+const mockGetAnswers = getAnswers as jest.Mock;
+const mockSendAnswer = sendAnswer as jest.Mock;
 
 const renderAvui = () =>
   render(
@@ -25,6 +30,7 @@ const mockReport = getLatestDailyReport as jest.Mock;
 const mockSessions = getSessionsForDay as jest.Mock;
 
 const report = {
+  id: 7,
   createdAt: '2026-08-29T07:23:51Z',
   verdict: 'amber',
   summary: 'Rodatge suau en lloc de sèries.',
@@ -49,6 +55,31 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockReport.mockResolvedValue(report);
   mockSessions.mockResolvedValue([session]);
+  mockGetAnswers.mockResolvedValue([]);
+  mockSendAnswer.mockResolvedValue(undefined);
+});
+
+test('respondre una pregunta del coach: escriure, enviar, confirmació', async () => {
+  await renderAvui();
+  await screen.findByText(/Com notes les cames\?/);
+
+  const user = userEvent.setup();
+  await user.type(screen.getByPlaceholderText(/Respon/), 'Bé, sense agulletes');
+  await user.press(screen.getByText('Envia'));
+
+  await waitFor(() =>
+    expect(mockSendAnswer).toHaveBeenCalledWith(7, 'Com notes les cames?', 'Bé, sense agulletes')
+  );
+  expect(await screen.findByText(/Tu: Bé, sense agulletes/)).toBeOnTheScreen();
+});
+
+test('una pregunta ja resposta mostra la resposta, no la caixa', async () => {
+  mockGetAnswers.mockResolvedValue([
+    { id: 1, question: 'Com notes les cames?', answer: 'Una mica pesades' },
+  ]);
+  await renderAvui();
+  expect(await screen.findByText(/Tu: Una mica pesades/)).toBeOnTheScreen();
+  expect(screen.queryByPlaceholderText(/Respon/)).toBeNull();
 });
 
 test('pinta semàfor, titular, sessió amb passos i preguntes', async () => {

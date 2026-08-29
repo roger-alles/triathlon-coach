@@ -27,8 +27,16 @@ def test_fornells_plan_passes_all_14_rules():
     violations = validate_plan(plan, athlete, history, [goal],
                                reference_date=plan_start)
 
-    assert violations == [], "\n".join(f"{v.rule} [{v.severity}]: {v.message}"
-                                       for v in violations)
+    # 29/08: les 5×1000 del 29/08 es van substituir per rodatge (proposta del
+    # coach aprovada per l'atleta) i el pla va quedar amb DOS avisos R9
+    # coneguts i acceptats: run/intervals reapareix al taper sense haver-se
+    # practicat dins del pla. Cap violació bloquejant, i cap avís NOU.
+    blocking = [v for v in violations if v.severity == "blocking"]
+    assert blocking == [], "\n".join(f"{v.rule}: {v.message}" for v in blocking)
+    assert sorted(v.message for v in violations) == [
+        "2026-09-18: 'run/intervals' mai practicat abans, a 9 dies de la cursa",
+        "2026-09-23: 'run/intervals' mai practicat abans, a 4 dies de la cursa",
+    ]
 
 
 def test_fornells_loads_expected_shape():

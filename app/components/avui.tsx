@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -13,11 +14,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 
 import {
+  AthleteAnswer,
   DailyReport,
   PlanSession,
+  getAnswers,
   getLatestDailyReport,
   getSessionsForDay,
   localDateISO,
+  sendAnswer,
 } from '@/lib/api';
 import { formatDateCa, formatDuration, formatStep, sportLabel, verdictColor } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
@@ -27,6 +31,7 @@ const VERDICT_LABEL: Record<string, string> = { green: 'VERD', amber: 'ÀMBAR', 
 export default function Avui() {
   const [report, setReport] = useState<DailyReport | null>(null);
   const [sessions, setSessions] = useState<PlanSession[]>([]);
+  const [answers, setAnswers] = useState<AthleteAnswer[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -38,6 +43,7 @@ export default function Avui() {
       const [r, s] = await Promise.all([getLatestDailyReport(), getSessionsForDay(localDateISO())]);
       setReport(r);
       setSessions(s);
+      setAnswers(r ? await getAnswers(r.id) : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -103,9 +109,15 @@ export default function Avui() {
             <View style={styles.card}>
               <ThemedText style={styles.cardTitle}>El coach et pregunta</ThemedText>
               {report.questions.map((q, i) => (
-                <ThemedText key={i} style={styles.step}>
-                  · {q}
-                </ThemedText>
+                <QuestionRow
+                  key={i}
+                  question={q}
+                  existing={answers.find((a) => a.question === q)?.answer}
+                  onSend={async (text) => {
+                    await sendAnswer(report.id, q, text);
+                    setAnswers((prev) => [...prev, { id: -prev.length - 1, question: q, answer: text }]);
+                  }}
+                />
               ))}
             </View>
           )}
@@ -116,6 +128,56 @@ export default function Avui() {
         <ThemedText style={styles.logout}>Surt</ThemedText>
       </TouchableOpacity>
     </ScrollView>
+  );
+}
+
+function QuestionRow({
+  question,
+  existing,
+  onSend,
+}: {
+  question: string;
+  existing?: string;
+  onSend: (text: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [rowError, setRowError] = useState<string | null>(null);
+
+  return (
+    <View style={styles.questionRow}>
+      <ThemedText style={styles.step}>· {question}</ThemedText>
+      {existing ? (
+        <ThemedText style={styles.answerDone}>Tu: {existing}</ThemedText>
+      ) : (
+        <View style={styles.answerRow}>
+          <TextInput
+            style={styles.answerInput}
+            placeholder="Respon al coach…"
+            placeholderTextColor="#8a8a8a"
+            value={draft}
+            onChangeText={setDraft}
+            multiline
+          />
+          <TouchableOpacity
+            style={[styles.answerButton, !draft.trim() && { opacity: 0.4 }]}
+            disabled={busy || !draft.trim()}
+            onPress={async () => {
+              setBusy(true);
+              setRowError(null);
+              try {
+                await onSend(draft.trim());
+              } catch (e) {
+                setRowError(e instanceof Error ? e.message : String(e));
+              }
+              setBusy(false);
+            }}>
+            <ThemedText style={styles.answerButtonText}>{busy ? '…' : 'Envia'}</ThemedText>
+          </TouchableOpacity>
+        </View>
+      )}
+      {rowError && <ThemedText style={styles.error}>{rowError}</ThemedText>}
+    </View>
   );
 }
 
@@ -135,4 +197,24 @@ const styles = StyleSheet.create({
   muted: { opacity: 0.6, textAlign: 'center', marginTop: 8 },
   error: { color: '#d64541', textAlign: 'center' },
   logout: { textAlign: 'center', opacity: 0.5, marginTop: 16 },
+  questionRow: { gap: 6 },
+  answerRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
+  answerInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: 'rgba(127,127,127,0.4)',
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 14,
+    color: '#888',
+    minHeight: 40,
+  },
+  answerButton: {
+    backgroundColor: '#1D3D47',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  answerButtonText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  answerDone: { fontSize: 14, fontStyle: 'italic', color: '#2e9e5b' },
 });

@@ -4,6 +4,7 @@ import type { Step } from './format';
 import { supabase } from './supabase';
 
 export type DailyReport = {
+  id: number;
   createdAt: string;
   verdict: string;
   summary: string;
@@ -181,7 +182,7 @@ export async function getLogistics(goalId: number): Promise<LogisticsTask[]> {
 export async function getLatestDailyReport(): Promise<DailyReport | null> {
   const { data, error } = await supabase
     .from('coach_report')
-    .select('created_at, output')
+    .select('id, created_at, output')
     .eq('report_type', 'daily')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -190,12 +191,36 @@ export async function getLatestDailyReport(): Promise<DailyReport | null> {
   if (!data) return null;
   const output = data.output as Record<string, any>;
   return {
+    id: data.id,
     createdAt: data.created_at,
     verdict: output.readiness?.verdict ?? 'unknown',
     summary: output.summary ?? '',
     rationale: output.rationale ?? '',
     questions: output.questions_for_athlete ?? [],
   };
+}
+
+export type AthleteAnswer = {
+  id: number;
+  question: string;
+  answer: string;
+};
+
+export async function sendAnswer(reportId: number, question: string, answer: string): Promise<void> {
+  const { error } = await supabase
+    .from('athlete_answer')
+    .insert({ report_id: reportId, question, answer });
+  if (error) throw new Error(error.message);
+}
+
+export async function getAnswers(reportId: number): Promise<AthleteAnswer[]> {
+  const { data, error } = await supabase
+    .from('athlete_answer')
+    .select('id, question, answer')
+    .eq('report_id', reportId)
+    .order('id');
+  if (error) throw new Error(error.message);
+  return (data ?? []) as AthleteAnswer[];
 }
 
 export async function getSessionsForDay(dateISO: string): Promise<PlanSession[]> {

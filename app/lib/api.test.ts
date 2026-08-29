@@ -37,6 +37,7 @@ test('localDateISO usa la zona horària local, no UTC', () => {
 
 test("l'últim informe daily es tradueix al que la pantalla necessita", async () => {
   const row = {
+    id: 7,
     created_at: '2026-08-29T07:23:51Z',
     output: {
       summary: 'Rodatge suau en lloc de sèries.',
@@ -50,6 +51,7 @@ test("l'últim informe daily es tradueix al que la pantalla necessita", async ()
   const report = await getLatestDailyReport();
   expect(mockFrom).toHaveBeenCalledWith('coach_report');
   expect(report).toEqual({
+    id: 7,
     createdAt: '2026-08-29T07:23:51Z',
     verdict: 'amber',
     summary: 'Rodatge suau en lloc de sèries.',
@@ -155,6 +157,31 @@ test("l'objectiu actiu i la seva logística es llegeixen sencers", async () => {
   mockFrom.mockReturnValue(chain2);
   expect(await getLogistics(2)).toEqual(rows);
   expect(chain2.eq).toHaveBeenCalledWith('goal_id', 2);
+});
+
+test("respondre una pregunta del coach fa un INSERT (mai update: és un quadern)", async () => {
+  const { sendAnswer } = require('./api');
+  const chain = chainResolving({ data: null, error: null });
+  chain.insert = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+
+  await sendAnswer(7, 'Com notes les cames?', 'Bé, sense agulletes');
+  expect(mockFrom).toHaveBeenCalledWith('athlete_answer');
+  expect(chain.insert).toHaveBeenCalledWith({
+    report_id: 7,
+    question: 'Com notes les cames?',
+    answer: 'Bé, sense agulletes',
+  });
+});
+
+test("les respostes ja donades d'un informe es poden recuperar", async () => {
+  const { getAnswers } = require('./api');
+  const rows = [{ id: 1, question: 'p?', answer: 'r' }];
+  const chain = chainResolving({ data: rows, error: null });
+  mockFrom.mockReturnValue(chain);
+
+  expect(await getAnswers(7)).toEqual(rows);
+  expect(chain.eq).toHaveBeenCalledWith('report_id', 7);
 });
 
 test('els errors de la BD no es traguen en silenci', async () => {
