@@ -41,6 +41,40 @@ export type Activity = {
   plan_session_id: number | null;
 };
 
+export type ActivityDetail = Activity & {
+  max_hr: number | null;
+  avg_pace_sec_km: number | null;
+  avg_pace_sec_100m: number | null;
+  elevation_gain_m: number | null;
+  load: number | null;
+  perceived_effort: number | null;
+  feeling: number | null;
+  athlete_notes: string | null;
+};
+
+export type SubjectiveUpdate = {
+  perceived_effort?: number | null;
+  feeling?: number | null;
+  athlete_notes?: string | null;
+};
+
+export async function getActivity(id: number): Promise<ActivityDetail | null> {
+  const { data, error } = await supabase
+    .from('activity')
+    .select(
+      'id, local_date, sport, duration_sec, distance_m, avg_hr, max_hr, avg_pace_sec_km, avg_pace_sec_100m, elevation_gain_m, load, perceived_effort, feeling, athlete_notes, plan_session_id'
+    )
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as ActivityDetail | null;
+}
+
+export async function updateActivitySubjective(id: number, changes: SubjectiveUpdate): Promise<void> {
+  const { error } = await supabase.from('activity').update(changes).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 export function weekDaysISO(d: Date = new Date()): string[] {
   const monday = new Date(d);
   monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));

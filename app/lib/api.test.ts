@@ -107,6 +107,41 @@ test('la corba de forma converteix els numeric (que arriben com a strings)', asy
   expect(series[1].tsb).toBe(-24.6);
 });
 
+test("el detall d'activitat es demana per id", async () => {
+  const { getActivity } = require('./api');
+  const row = { id: 3, sport: 'bike', duration_sec: 9237 };
+  const chain = chainResolving({ data: row, error: null }, 'maybeSingle');
+  mockFrom.mockReturnValue(chain);
+
+  expect(await getActivity(3)).toEqual(row);
+  expect(mockFrom).toHaveBeenCalledWith('activity');
+  expect(chain.eq).toHaveBeenCalledWith('id', 3);
+});
+
+test("l'actualització subjectiva envia NOMÉS les tres columnes permeses pel pany", async () => {
+  const { updateActivitySubjective } = require('./api');
+  const chain = chainResolving({ data: null, error: null });
+  chain.update = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+
+  await updateActivitySubjective(3, { perceived_effort: 7, feeling: 4, athlete_notes: 'genoll bé' });
+  expect(chain.update).toHaveBeenCalledWith({
+    perceived_effort: 7,
+    feeling: 4,
+    athlete_notes: 'genoll bé',
+  });
+  expect(chain.eq).toHaveBeenCalledWith('id', 3);
+});
+
+test("l'actualització subjectiva propaga l'error de la BD (p. ex. RLS)", async () => {
+  const { updateActivitySubjective } = require('./api');
+  const chain = chainResolving({ data: null, error: { message: 'permission denied' } });
+  chain.update = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+
+  await expect(updateActivitySubjective(3, { perceived_effort: 5 })).rejects.toThrow('permission denied');
+});
+
 test('els errors de la BD no es traguen en silenci', async () => {
   mockFrom.mockReturnValue(chainResolving({ data: null, error: { message: 'permission denied' } }, 'maybeSingle'));
   await expect(getLatestDailyReport()).rejects.toThrow('permission denied');

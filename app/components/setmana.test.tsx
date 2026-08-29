@@ -8,7 +8,10 @@ jest.mock('@/lib/api', () => ({
   localDateISO: () => '2026-08-29',
 }));
 
-import { render, screen } from '@testing-library/react-native';
+const mockPush = jest.fn();
+jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(...a) } }));
+
+import { render, screen, userEvent } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getActivitiesForRange, getSessionsForRange } from '@/lib/api';
 import Setmana from './setmana';
@@ -59,6 +62,17 @@ test('la sessió vinculada mostra el real; l\'activitat sense pla surt com a for
   await renderSetmana();
   expect(await screen.findByText(/Real: 2 h 34 min/)).toBeOnTheScreen();
   expect(screen.getByText(/Fora de pla · Natació · 52 min/)).toBeOnTheScreen();
+});
+
+test("tocar una activitat feta obre el seu detall", async () => {
+  await renderSetmana();
+  await screen.findByText(/Dilluns 24/);
+  const user = userEvent.setup();
+  await user.press(screen.getByText(/Real: 2 h 34 min/));
+  expect(mockPush).toHaveBeenCalledWith({ pathname: '/activitat', params: { id: 3 } });
+
+  await user.press(screen.getByText(/Fora de pla · Natació/));
+  expect(mockPush).toHaveBeenCalledWith({ pathname: '/activitat', params: { id: 1 } });
 });
 
 test('avui queda marcat', async () => {

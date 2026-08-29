@@ -1,5 +1,13 @@
+import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -99,7 +107,12 @@ export default function Setmana() {
                       </ThemedText>
                     </ThemedText>
                     {real?.duration_sec != null && (
-                      <ThemedText style={styles.real}>Real: {formatDuration(real.duration_sec)}</ThemedText>
+                      <TouchableOpacity
+                        onPress={() => router.push({ pathname: '/activitat', params: { id: real.id } })}>
+                        <ThemedText style={styles.real}>
+                          Real: {formatDuration(real.duration_sec)} ›
+                        </ThemedText>
+                      </TouchableOpacity>
                     )}
                   </View>
                 </View>
@@ -107,13 +120,16 @@ export default function Setmana() {
             })}
 
             {extras.map((a) => (
-              <View key={a.id} style={styles.session}>
+              <TouchableOpacity
+                key={a.id}
+                style={styles.session}
+                onPress={() => router.push({ pathname: '/activitat', params: { id: a.id } })}>
                 <View style={[styles.dot, styles.extraDot]} />
                 <ThemedText style={styles.sessionMeta}>
                   Fora de pla · {sportLabel(a.sport)}
-                  {a.duration_sec != null && ` · ${formatDuration(a.duration_sec)}`}
+                  {a.duration_sec != null && ` · ${formatDuration(a.duration_sec)}`} ›
                 </ThemedText>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         );

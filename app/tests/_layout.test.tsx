@@ -21,12 +21,14 @@ test('sense sessió: només es pot arribar al login', async () => {
   await render(<RootLayout />);
   expect(screen.getByText('screen:login')).toBeOnTheScreen();
   expect(screen.queryByText('screen:(tabs)')).toBeNull();
+  expect(screen.queryByText('screen:activitat')).toBeNull();
 });
 
-test('amb sessió: pestanyes visibles i login fora', async () => {
+test('amb sessió: pestanyes i detall d\'activitat visibles, login fora', async () => {
   mockUseSession.mockReturnValue({ session: { user: { id: 'roger' } }, loading: false });
   await render(<RootLayout />);
   expect(screen.getByText('screen:(tabs)')).toBeOnTheScreen();
+  expect(screen.getByText('screen:activitat')).toBeOnTheScreen();
   expect(screen.queryByText('screen:login')).toBeNull();
 });
 
