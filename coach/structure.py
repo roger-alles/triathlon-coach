@@ -17,6 +17,10 @@ SEGMENT_SPORTS = {"swim", "bike", "run", "transition"}
 
 
 def validate_structure(structure: dict, sport: str, athlete: Athlete) -> list[str]:
+    if not isinstance(structure, dict):
+        return ["structure ha de ser un objecte amb la clau 'steps' "
+                "(o 'segments' per multisport), no una llista ni un escalar; "
+                "p. ex. {\"steps\": [...]}"]
     errors: list[str] = []
     if sport == "multisport":
         segments = structure.get("segments")

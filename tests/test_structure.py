@@ -66,3 +66,14 @@ def test_multisport_needs_segments_and_validates_them():
     assert ok(good, sport="multisport") == []
     bad = {"segments": [{"sport": "swim"}]}  # sense distància ni durada
     assert ok(bad, sport="multisport")
+
+
+def test_structure_that_is_not_a_dict_is_an_error_not_a_crash():
+    # 29/08 nit: el model va enviar structure_json com a llista de steps
+    # directament i el cicle va petar amb AttributeError en lloc de donar
+    # feedback al retry. Qualsevol cosa que no sigui un objecte és un error
+    # semàntic més, amb missatge que expliqui al model com corregir-ho.
+    for bad in ([{"phase": "main"}], "steps", 42, None):
+        errors = ok(bad)
+        assert len(errors) == 1
+        assert "objecte" in errors[0] and "steps" in errors[0]
