@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "report_type": "daily",
+  "readiness": {"verdict": "green", "drivers": [], "confidence": "high"},
+  "summary": "Cancel·lo el descans per aprofitar el bon estat.",
+  "rationale": "L'atleta està fresc: el dia de descans sobra.",
+  "session_changes": [
+    {"plan_session_id": 1, "action": "cancel", "reason": "Estat excel·lent, aprofitem."}
+  ],
+  "flags": [],
+  "questions_for_athlete": []
+}

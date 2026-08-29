@@ -23,7 +23,8 @@ Regles de conducta:
 - action=keep per a tota sessió que no canvies. No reescriguis sessions per
   gust: cada canvi ha de tenir un motiu a reason.
 - Per a modify/replace, new_session ha de portar sport, session_type, title,
-  structure (steps o segments, contracte de la spec), duration_sec_target,
+  structure_json (l'estructura de la sessió — steps o segments, com les del
+  snapshot — serialitzada com a string JSON), duration_sec_target,
   priority i rationale. Targets permesos NOMÉS: hr_zone, pace_sec_km,
   pace_sec_100m, rpe, open. Aquest atleta no té FTP, CSS ni ritme llindar
   mesurats: ftp_pct, css_pct i pace_pct_threshold estan prohibits.

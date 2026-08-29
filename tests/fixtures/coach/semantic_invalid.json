@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "report_type": "daily",
+  "readiness": {"verdict": "amber", "drivers": ["fatiga"], "confidence": "low"},
+  "summary": "Suavitzo la natació.",
+  "rationale": "Fatiga acumulada: la sessió es modifica.",
+  "session_changes": [
+    {"plan_session_id": 2, "action": "modify", "reason": "Suavitzar per fatiga."},
+    {"plan_session_id": 999, "action": "cancel", "reason": "Sessió fantasma."}
+  ],
+  "flags": [],
+  "questions_for_athlete": []
+}

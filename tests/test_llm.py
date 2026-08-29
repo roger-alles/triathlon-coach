@@ -34,7 +34,8 @@ class _FakeClient:
 def test_generate_passes_schema_and_system_and_parses():
     fake = _FakeClient()
     llm = CoachLLM(client=fake, model="claude-sonnet-5")
-    output, usage = llm.generate(system="ets el coach", payload='{"today":"x"}')
+    conversation = [{"role": "user", "content": '{"today":"x"}'}]
+    output, usage = llm.generate(system="ets el coach", messages=conversation)
 
     assert output == VALID_OUTPUT
     assert usage == {"model": "claude-sonnet-5", "input_tokens": 9000,
@@ -43,7 +44,7 @@ def test_generate_passes_schema_and_system_and_parses():
     assert sent["system"] == "ets el coach"
     assert sent["output_config"]["format"]["type"] == "json_schema"
     assert sent["output_config"]["format"]["schema"] == OUTPUT_SCHEMA
-    assert sent["messages"][0]["content"] == '{"today":"x"}'
+    assert sent["messages"] == conversation
 
 
 def test_output_schema_has_no_meta_keys():

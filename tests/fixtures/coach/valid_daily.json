@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "report_type": "daily",
+  "readiness": {"verdict": "green", "drivers": ["tsb_recovering"], "confidence": "medium"},
+  "summary": "Dia verd: endavant amb la natació suau.",
+  "rationale": "El TSB puja i la FC en repòs és a la línia base. La sessió d'avui és assumible tal com està.",
+  "session_changes": [
+    {"plan_session_id": 2, "action": "keep", "reason": "L'estat de l'atleta no demana cap canvi."}
+  ],
+  "flags": [],
+  "questions_for_athlete": []
+}

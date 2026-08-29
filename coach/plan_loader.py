@@ -67,11 +67,11 @@ def plan_from_db(conn) -> tuple[list[Session], Goal, History, Athlete]:
                     structure=r[4], block=blocks.get(r[5]),
                     duration_sec_target=r[6], priority=r[7], status=r[8],
                     is_test=r[9], rehearses_goal=r[10], is_goal_event=r[11],
-                    chained=r[12] is not None)
+                    chained=r[12] is not None, id=r[13])
             for r in conn.execute("""select local_date, sport, session_type, title,
                                      structure, block_id, duration_sec_target,
                                      priority, status, is_test, rehearses_goal,
-                                     is_goal_event, chained_after
+                                     is_goal_event, chained_after, id
                                      from plan_session where superseded_by is null""")]
 
     plan_start = min(s.local_date for s in plan)

@@ -42,13 +42,17 @@ class CoachLLM:
         self.model = model or os.getenv("COACH_MODEL", DEFAULT_MODEL)
         self.client = client or anthropic.Anthropic()
 
-    def generate(self, system: str, payload: str) -> tuple[dict, dict]:
-        """(informe parsejat, ús) — una crida amb sortida estructurada."""
+    def generate(self, system: str, messages: list[dict]) -> tuple[dict, dict]:
+        """(informe parsejat, ús) — una crida amb sortida estructurada.
+
+        messages és la conversa sencera: el bucle de correcció hi va afegint
+        la resposta rebutjada i les infraccions del validador.
+        """
         response = self.client.messages.create(
             model=self.model,
             max_tokens=MAX_TOKENS,
             system=system,
-            messages=[{"role": "user", "content": payload}],
+            messages=messages,
             output_config={"format": {"type": "json_schema",
                                       "schema": OUTPUT_SCHEMA}},
         )

@@ -181,8 +181,10 @@ def _monday(d: date) -> date:
     return d - timedelta(days=d.weekday())
 
 
-def build_weeks(plan: list[Session]) -> list[Week]:
-    start, end = min(s.local_date for s in plan), max(s.local_date for s in plan)
+def build_weeks(plan: list[Session], plan_start: date | None = None) -> list[Week]:
+    # plan_start permet validar un pla MODIFICAT amb l'ancoratge de l'original:
+    # si el coach cancel·la la primera sessió, la setmana no es torna "parcial"
+    start = plan_start or min(s.local_date for s in plan)
     by_monday: dict[date, Week] = {}
     for s in plan:
         wk = by_monday.setdefault(_monday(s.local_date), Week(_monday(s.local_date)))
@@ -543,12 +545,13 @@ def r14_integrity(plan: list[Session], athlete: Athlete,
 # ─── punt d'entrada ──────────────────────────────────────────────────
 
 def validate_plan(plan: list[Session], athlete: Athlete, history: History,
-                  goals: list[Goal], reference_date: date | None = None) -> list[Violation]:
+                  goals: list[Goal], reference_date: date | None = None,
+                  plan_start: date | None = None) -> list[Violation]:
     if not plan:
         return []
     if reference_date is None:
         reference_date = min(s.local_date for s in plan)
-    weeks = build_weeks(plan)
+    weeks = build_weeks(plan, plan_start)
     violations = []
     violations += r1_weekly_ramp(weeks, history)
     violations += r2_deload_cadence(weeks, goals)

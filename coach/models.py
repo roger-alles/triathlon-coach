@@ -50,6 +50,7 @@ class Session:
     rehearses_goal: bool = False
     is_goal_event: bool = False
     chained: bool = False       # brick encadenat a la sessió pare del mateix dia
+    id: int | None = None       # id de la DB; None per a sessions no desades
 
 
 @dataclass

@@ -30,7 +30,20 @@
           "action": {"enum": ["keep", "modify", "replace", "move", "cancel"]},
           "new_session": {
             "type": "object",
-            "description": "Obligatori per a modify/replace: sport, session_type, title, structure (contracte §6), duration_sec_target, priority, rationale"
+            "additionalProperties": false,
+            "required": ["sport", "session_type", "title", "structure_json"],
+            "description": "Obligatori per a modify/replace",
+            "properties": {
+              "sport": {"enum": ["swim", "bike", "run", "strength", "brick", "multisport", "rest"]},
+              "session_type": {"type": "string"},
+              "title": {"type": "string"},
+              "structure_json": {"type": "string",
+                "description": "L'estructura de la sessió (contracte §6: steps o segments) serialitzada com a string JSON"},
+              "duration_sec_target": {"type": "integer"},
+              "distance_m_target": {"type": "number"},
+              "priority": {"enum": ["key", "support", "optional"]},
+              "rationale": {"type": "string"}
+            }
           },
           "new_date": {"type": "string", "description": "Obligatori per a move (YYYY-MM-DD)"},
           "reason": {"type": "string"}
