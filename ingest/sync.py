@@ -102,6 +102,35 @@ def last_date(conn, table: str) -> date | None:
     return conn.execute(f"select max(local_date) from {table}").fetchone()[0]
 
 
+def collect_rows(provider, activity_start: date, daily_start: date,
+                 today: date) -> tuple[list[dict], list[dict]]:
+    """Tot el que és lent (Garmin) passa aquí, SENSE cap connexió a la BD.
+
+    El pooler de Supabase mata connexions ocioses: mantenir-ne una oberta
+    mentre es baixa de Garmin va tombar el job tres cops el 29-30/08.
+    """
+    activity_rows = []
+    for a in provider.fetch_activities(activity_start, today):
+        row = map_activity(a)
+        row["raw"] = Jsonb(row["raw"])
+        activity_rows.append(row)
+
+    daily_rows = []
+    for i in range((today - daily_start).days + 1):
+        day = daily_start + timedelta(days=i)
+        row = map_daily(day, provider.fetch_daily(day))
+        row["raw"] = Jsonb(row["raw"])
+        daily_rows.append(row)
+    return activity_rows, daily_rows
+
+
+def write_rows(conn, activity_rows: list[dict], daily_rows: list[dict]) -> None:
+    for row in activity_rows:
+        conn.execute(UPSERT_ACTIVITY, row)
+    for row in daily_rows:
+        conn.execute(UPSERT_DAILY, row)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--since", type=date.fromisoformat,
@@ -116,25 +145,18 @@ def main() -> None:
     provider = GarminProvider()
     today = date.today()
 
+    # Connexió curta: només llegir on érem.
     with psycopg.connect(url) as conn:
-        # Activitats
-        start = compute_start_date(last_date(conn, "activity"), args.since)
-        activities = provider.fetch_activities(start, today)
-        for a in activities:
-            row = map_activity(a)
-            row["raw"] = Jsonb(row["raw"])
-            conn.execute(UPSERT_ACTIVITY, row)
-        print(f"activitats: {len(activities)} upserts ({start} -> {today})")
+        activity_start = compute_start_date(last_date(conn, "activity"), args.since)
+        daily_start = compute_start_date(last_date(conn, "daily_metric"), args.since)
 
-        # Mètriques diàries
-        start = compute_start_date(last_date(conn, "daily_metric"), args.since)
-        n_days = (today - start).days + 1
-        for i in range(n_days):
-            day = start + timedelta(days=i)
-            row = map_daily(day, provider.fetch_daily(day))
-            row["raw"] = Jsonb(row["raw"])
-            conn.execute(UPSERT_DAILY, row)
-        print(f"mètriques diàries: {n_days} upserts ({start} -> {today})")
+    activity_rows, daily_rows = collect_rows(provider, activity_start, daily_start, today)
+
+    # Segona connexió curta: escriure-ho tot de cop.
+    with psycopg.connect(url) as conn:
+        write_rows(conn, activity_rows, daily_rows)
+    print(f"activitats: {len(activity_rows)} upserts ({activity_start} -> {today})")
+    print(f"mètriques diàries: {len(daily_rows)} upserts ({daily_start} -> {today})")
 
 
 if __name__ == "__main__":
