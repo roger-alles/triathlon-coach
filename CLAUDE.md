@@ -29,6 +29,21 @@ with psycopg.connect(os.environ["DATABASE_URL"]) as c:
 EOF
 ```
 
+**Si el port 5432 està tallat** (sessions cloud: només surt HTTPS), fes servir
+l'API REST de Supabase amb `scripts/db-rest.sh` (necessita `SUPABASE_URL` i
+`SUPABASE_SERVICE_KEY` a l'entorn — la service key salta el RLS, tracta-la com
+a secret):
+
+```bash
+scripts/db-rest.sh 'load_daily?select=local_date,ctl,atl,tsb&order=local_date.desc&limit=3'
+scripts/db-rest.sh 'plan_session?select=local_date,sport,title,status&superseded_by=is.null&local_date=gte.2026-08-30&order=local_date&limit=10'
+scripts/db-rest.sh 'coach_report?select=created_at,output&report_type=eq.daily&order=created_at.desc&limit=1'
+scripts/db-rest.sh 'activity?select=local_date,sport,duration_sec,load,athlete_notes&order=local_date.desc&limit=7'
+```
+
+(Sintaxi de filtres: PostgREST — `eq.`, `gte.`, `is.null`, `order=col.desc`.
+Els `numeric` arriben com a strings.)
+
 Lectura: TSB (frescor) negatiu = construint, prop de zero/positiu = a punt per
 rendir. El TSB d'un dia és la frescor amb què s'hi ENTRA (CTL−ATL del dia
 abans). Càrregues d'activitats sense FC són estimades (durada×50) — soroll.
