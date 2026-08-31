@@ -24,7 +24,12 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
+import psycopg
+from dotenv import load_dotenv
+
+from coach.context import build_context
 from coach.llm import CoachLLM, load_prompt
+from coach.plan_loader import plan_from_db
 from coach.models import Athlete, History, Session, Violation
 from coach.rules import validate_plan
 from coach.structure import validate_structure
@@ -217,11 +222,6 @@ def write_report(conn, report_type: str, snapshot: dict, result: dict,
 
 
 def main() -> None:
-    import psycopg
-    from dotenv import load_dotenv
-
-    from coach.context import build_context
-    from coach.plan_loader import plan_from_db
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("report_type", choices=["daily", "weekly"])
@@ -240,19 +240,24 @@ def main() -> None:
     # al dia real: les sessions d'avui encara no són passat a les 21:30
     target = today + timedelta(days=1) if args.tomorrow else today
 
+    # Connexió curta només per llegir. El pooler de Supabase mata connexions
+    # ocioses: mantenir-ne una oberta durant la crida al model (1-3 min) va
+    # perdre dos informes ja generats el 30-31/08.
     with psycopg.connect(url) as conn:
         snapshot = build_context(conn, target)
         if args.tomorrow:
             snapshot["mode"] = "evening_preview"
         plan, goal, history, athlete = plan_from_db(conn)
 
-        result = coach_cycle(
-            llm=CoachLLM(), system=load_prompt(f"{args.report_type}-v1"),
-            context_json=json.dumps(snapshot, ensure_ascii=False),
-            plan=plan, athlete=athlete, history=history, goals=[goal],
-            today=today, report_type=args.report_type)
+    result = coach_cycle(
+        llm=CoachLLM(), system=load_prompt(f"{args.report_type}-v1"),
+        context_json=json.dumps(snapshot, ensure_ascii=False),
+        plan=plan, athlete=athlete, history=history, goals=[goal],
+        today=today, report_type=args.report_type)
 
-        applied = 0
+    # Segona connexió curta per persistir.
+    applied = 0
+    with psycopg.connect(url) as conn:
         if result["accepted"] and not args.dry_run:
             with conn.transaction():
                 applied = apply_to_db(conn, result["output"]["session_changes"])

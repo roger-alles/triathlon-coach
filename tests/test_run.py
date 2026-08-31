@@ -126,3 +126,50 @@ def test_rule_violation_rejected_and_discarded_after_max_attempts():
     assert llm.calls == MAX_ATTEMPTS
     # el motiu és concret: cancel·lar el descans viola R5
     assert any("R5" in e for errors in result["validation_errors"] for e in errors)
+
+
+def test_main_holds_no_db_connection_while_the_model_thinks(monkeypatch):
+    # 30-31/08: el pooler de Supabase va matar la connexió durant la crida al
+    # model (1-3 min) i write_report va fallar: informe generat, pagat i perdut.
+    # Contracte: llegir amb una connexió, tancar-la, cridar el model, i obrir-ne
+    # una de nova per persistir.
+    import coach.run as run
+
+    open_conns = []
+    connect_calls = []
+
+    class FakeConn:
+        def __enter__(self):
+            open_conns.append(self)
+            return self
+        def __exit__(self, *a):
+            open_conns.remove(self)
+        def transaction(self):
+            return self
+
+    def fake_connect(url):
+        connect_calls.append(url)
+        return FakeConn()
+
+    def fake_cycle(**kw):
+        assert open_conns == [], "coach_cycle s'ha cridat amb una connexió oberta"
+        return {"accepted": True, "output": {"session_changes": [], "readiness":
+                {"verdict": "green", "drivers": []}, "summary": "s", "rationale": "r"},
+                "usage": {"model": "m", "input_tokens": 1, "output_tokens": 1},
+                "validation_errors": []}
+
+    written = []
+    monkeypatch.setattr(run.psycopg, "connect", fake_connect)
+    monkeypatch.setattr(run, "build_context", lambda conn, target: {"today": str(target)})
+    monkeypatch.setattr(run, "plan_from_db", lambda conn: ([], None, None, None))
+    monkeypatch.setattr(run, "coach_cycle", fake_cycle)
+    monkeypatch.setattr(run, "CoachLLM", lambda: None)
+    monkeypatch.setattr(run, "load_prompt", lambda name: "prompt")
+    monkeypatch.setattr(run, "write_report", lambda *a: written.append(a))
+    monkeypatch.setenv("DATABASE_URL", "postgres://x")
+    monkeypatch.setattr(sys, "argv", ["run.py", "daily", "--dry-run"])
+
+    run.main()
+
+    assert len(connect_calls) == 2   # una per llegir, una per escriure
+    assert len(written) == 1         # l'informe s'ha persistit
