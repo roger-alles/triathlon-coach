@@ -2,6 +2,23 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-07 — Les feines del coach surten del Mac: servidor `alberginia`
+
+L'objectiu d'en Roger és que l'app funcioni sense obrir l'ordinador. El Mac
+dorm de nit i la feina del matí quedava a mitges fins que obria la tapa.
+Les tres feines passen a un servidor Linux sempre encès (Clouding, Ubuntu
+26.04) amb `cron`, usuari sense privilegis `entrenador`, clon de `main` amb
+deploy key de només lectura, i desplegament automàtic diari (`git pull` a les
+05:50). Els mateixos scripts, sense canvis: `coach-job.sh` ja era agnòstic.
+Es descarta GitHub Actions perquè el servidor ja existia: estat persistent
+(tokens de Garmin que es renoven sols), cron exacte, i cada 20 min surt gratis.
+Els `launchd` del Mac queden desinstal·lats (els plists es conserven a
+`scripts/launchd/` per referència). Runbook: `docs/server.md`.
+
+Verificat des del servidor: 114 tests, `make sync` real contra Garmin (els
+tokens copiats funcionen des d'una IP de centre de dades), `coach.gate`
+respon, i una execució sencera de `coach-job.sh morning`.
+
 ## 2026-09-07 — Informe del matí disparat per dades (son present), no per hora
 
 La feina de les 06:15 generava l'informe sense el son de la nit: Garmin només
