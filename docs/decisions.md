@@ -2,6 +2,34 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-07 — App pujada a Expo SDK 57 (Expo Go de l'App Store ja no obre SDK 54)
+
+El 02/09 Apple va aprovar Expo Go 57.0.9; cada versió d'Expo Go només porta un
+SDK, i l'iPhone d'en Roger es va actualitzar sol: el projecte (SDK 54) va
+desaparèixer d'Expo Go. No es pot tornar a Expo Go 54 a iOS, així que l'app
+salta 54→57 d'un cop (`npx expo install expo@^57 --fix` + codemod
+`sdk-56-expo-router-react-navigation-replace`). Conseqüències:
+
+- `expo-router` ja no depèn de `@react-navigation/*`: s'importa de
+  `expo-router/react-navigation` i `expo-router/js-tabs`; els paquets
+  `@react-navigation/*` surten de `package.json`.
+- `newArchEnabled` i `edgeToEdgeEnabled` desapareixen d'`app.json` (ara són
+  obligatoris, l'opció ja no existeix).
+- npm deixava `expo-modules-core` niat sota `expo/` i `jest-expo` no el
+  trobava: es declara com a dependència directa.
+- TypeScript 6 ja no carrega tots els `@types/*` sols: `tsconfig.json` declara
+  `types: ["jest"]`.
+- RN 0.86 afegeix `'unspecified'` a `ColorSchemeName`: `hooks/use-color-scheme`
+  normalitza a `'light' | 'dark'` i la resta de l'app no ho ha de saber.
+- Reanimated 4 i Worklets exigeixen runtime natiu: `jest-setup.js` carrega els
+  mocks oficials (`react-native-worklets/src/mock`, `react-native-reanimated/mock`).
+- La regla nova `react-hooks/set-state-in-effect` marca `load()` als effects
+  d'Avui/Setmana/Forma com si fos setState síncron; no ho és (va després de
+  l'`await`). Es desactiva línia a línia amb el motiu, no es reestructura.
+
+Verificat: 61 tests jest, `tsc` net, `expo-doctor` 21/21, lint 0 errors,
+bundle iOS generat per Metro amb `runtimeVersion exposdk:57.0.0`.
+
 ## 2026-08-28 — Validador: interpretacions calibrades contra el pla de Fornells
 
 La spec §8.1 mana que el pla real passi les 14 regles; aquestes són les

@@ -54,6 +54,9 @@ export default function Setmana() {
   }, []);
 
   useEffect(() => {
+    // load() només fa setState després d'un await (no és síncron); la regla
+    // del React Compiler no distingeix el codi que hi ha després de l'await.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 

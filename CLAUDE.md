@@ -77,4 +77,4 @@ abans). Càrregues d'activitats sense FC són estimades (durada×50) — soroll.
 `SPEC-entrenador-triatlo.md` (spec) · `seeds/fornells-2026.yaml` (pla = veritat)
 · `docs/decisions.md` (totes les decisions datades) · `coach/prompts/` (persona
 del coach automàtic) · `docs/garmin-api.md` (què dona i què no el dispositiu)
-· `app/` (app Expo, SDK 54; el seu CLAUDE.md és per treballar-hi).
+· `app/` (app Expo, SDK 57; el seu CLAUDE.md és per treballar-hi).
