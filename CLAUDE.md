@@ -67,7 +67,8 @@ abans). Càrregues d'activitats sense FC són estimades (durada×50) — soroll.
    `make validate` (14 regles; els 2 avisos R9 del taper són coneguts i
    acceptats). Mai escriure directament a `plan_session`.
 2. **No executar `coach.run` ni res que gasti l'API d'Anthropic** — el coach
-   automàtic ja corre sol (launchd al Mac, 06:15/21:30). Tu ets la consulta.
+   automàtic ja corre sol (launchd al Mac: matí cada 20 min de 06:00 a 12:00,
+   genera quan Garmin ja té el son d'avui; vespre 21:30). Tu ets la consulta.
 3. Pots escriure, si ell t'ho demana: notes/RPE/sensacions a `activity`,
    entrades manuals d'activitats (id negatiu), respostes a `athlete_answer`.
 4. Tests abans de codi (`make test`, `cd app && npx jest`) si toques res.

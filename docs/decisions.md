@@ -2,6 +2,26 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-07 — Informe del matí disparat per dades (son present), no per hora
+
+La feina de les 06:15 generava l'informe sense el son de la nit: Garmin només
+el publica quan el rellotge sincronitza amb el mòbil, després que en Roger es
+desperti (avui, 11:43). El coach acabava preguntant "quantes hores has
+dormit?" i l'informe no deia res útil. A més, el Mac s'adormia a mitja feina
+(sync a les 06:46, informe escrit a les 09:43 en obrir la tapa).
+
+Canvi: la feina del matí s'intenta cada 20 min de 06:00 a 11:40 i passa per
+`coach.gate`, que només deixa generar quan (a) `daily_metric` d'avui té
+`sleep_duration_sec` i (b) encara no hi ha cap informe diari d'avui amb
+`window_start` = avui creat avui (el preview del vespre anterior no compta).
+`COACH_FORCE=1` salta la porta: és la palanca per a un futur botó a l'app.
+
+"Avui" és el dia a la zona de l'atleta (`ATHLETE_TZ`, per defecte
+Europe/Madrid) i `coach-job.sh` exporta `TZ`, de manera que el mateix script
+corre igual a launchd, a un cron d'un servidor en UTC o a GitHub Actions. El
+següent pas és treure la feina del Mac (que dorm): està decidit, pendent de
+tenir accés al servidor d'en Roger.
+
 ## 2026-09-07 — App pujada a Expo SDK 57 (Expo Go de l'App Store ja no obre SDK 54)
 
 El 02/09 Apple va aprovar Expo Go 57.0.9; cada versió d'Expo Go només porta un
