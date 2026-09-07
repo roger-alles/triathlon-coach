@@ -42,3 +42,19 @@ def test_fetch_daily_returns_stats_and_sleep(monkeypatch):
     payload = provider.fetch_daily(date(2026, 8, 26))
     assert payload["stats"] == {"restingHeartRate": 50}
     assert payload["sleep"] == {"dailySleepDTO": {}}
+
+
+def test_fetch_sleep_seconds_una_sola_peticio(monkeypatch):
+    monkeypatch.setattr(garmin_mod, "PAUSE_SEC", 0)
+    fake = _FakeClient()
+    fake.get_sleep_data = lambda d: (fake.calls.append(("sleep", d)) or
+                                     {"dailySleepDTO": {"sleepTimeSeconds": 30120}})
+    provider = GarminProvider(client=fake)
+    assert provider.fetch_sleep_seconds(date(2026, 9, 7)) == 30120
+    assert fake.calls == [("sleep", "2026-09-07")]
+
+
+def test_fetch_sleep_seconds_sense_nit_retorna_none(monkeypatch):
+    monkeypatch.setattr(garmin_mod, "PAUSE_SEC", 0)
+    fake = _FakeClient()  # dailySleepDTO buit: Garmin encara no té la nit
+    assert GarminProvider(client=fake).fetch_sleep_seconds(date(2026, 9, 7)) is None

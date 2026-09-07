@@ -67,8 +67,9 @@ abans). Càrregues d'activitats sense FC són estimades (durada×50) — soroll.
    `make validate` (14 regles; els 2 avisos R9 del taper són coneguts i
    acceptats). Mai escriure directament a `plan_session`.
 2. **No executar `coach.run` ni res que gasti l'API d'Anthropic** — el coach
-   automàtic ja corre sol (launchd al Mac: matí cada 20 min de 06:00 a 12:00,
-   genera quan Garmin ja té el son d'avui; vespre 21:30). Tu ets la consulta.
+   automàtic ja corre sol al servidor `alberginia` (`docs/server.md`: matí cada
+   5 min de 06:00 a 12:00, genera quan Garmin ja té el son d'avui; sync cada hora
+   06-22; vespre 21:30; setmanal diumenge 20:30). Tu ets la consulta.
 3. Pots escriure, si ell t'ho demana: notes/RPE/sensacions a `activity`,
    entrades manuals d'activitats (id negatiu), respostes a `athlete_answer`.
 4. Tests abans de codi (`make test`, `cd app && npx jest`) si toques res.
@@ -78,4 +79,5 @@ abans). Càrregues d'activitats sense FC són estimades (durada×50) — soroll.
 `SPEC-entrenador-triatlo.md` (spec) · `seeds/fornells-2026.yaml` (pla = veritat)
 · `docs/decisions.md` (totes les decisions datades) · `coach/prompts/` (persona
 del coach automàtic) · `docs/garmin-api.md` (què dona i què no el dispositiu)
+· `docs/server.md` (servidor on corren les feines, cron, logs, com desplegar)
 · `app/` (app Expo, SDK 57; el seu CLAUDE.md és per treballar-hi).

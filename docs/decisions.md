@@ -2,6 +2,39 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-07 — Porta del matí barata: primer preguntar, després sincronitzar
+
+La primera versió de la porta feia el sync complet (15-20 peticions a Garmin,
+19 s) a cada intent i mirava la porta al final: sis syncs inútils cada matí
+després de l'informe, i cada 20 min com a màxim raonable. Es reordena:
+(1) ¿ja hi ha informe del matí avui? (BD, 0 peticions) → (2) ¿Garmin té el
+son d'avui? (`fetch_sleep_seconds`, 1 petició) → (3) sync + coach. Un intent
+buit costa 0-1 peticions i 2 s, així que el cron passa a cada 5 min de 06:00
+a 11:55 sense pujar el cost: informe 5 min després que el rellotge
+sincronitzi, ~45 peticions al dia per al matí en lloc de ~300.
+
+Efecte secundari que es perdia: els syncs repetits del matí feien que un
+entreno aparegués a l'app en 20 min. Es compensa amb un `coach-job.sh sync`
+cada hora de 06:00 a 22:00: qualsevol entreno surt en menys d'una hora, a
+qualsevol hora (abans, a la tarda no sortia fins a les 21:30).
+
+## 2026-09-07 — Les feines del coach surten del Mac: servidor `alberginia`
+
+L'objectiu d'en Roger és que l'app funcioni sense obrir l'ordinador. El Mac
+dorm de nit i la feina del matí quedava a mitges fins que obria la tapa.
+Les tres feines passen a un servidor Linux sempre encès (Clouding, Ubuntu
+26.04) amb `cron`, usuari sense privilegis `entrenador`, clon de `main` amb
+deploy key de només lectura, i desplegament automàtic diari (`git pull` a les
+05:50). Els mateixos scripts, sense canvis: `coach-job.sh` ja era agnòstic.
+Es descarta GitHub Actions perquè el servidor ja existia: estat persistent
+(tokens de Garmin que es renoven sols), cron exacte, i cada 20 min surt gratis.
+Els `launchd` del Mac queden desinstal·lats (els plists es conserven a
+`scripts/launchd/` per referència). Runbook: `docs/server.md`.
+
+Verificat des del servidor: 114 tests, `make sync` real contra Garmin (els
+tokens copiats funcionen des d'una IP de centre de dades), `coach.gate`
+respon, i una execució sencera de `coach-job.sh morning`.
+
 ## 2026-09-07 — Informe del matí disparat per dades (son present), no per hora
 
 La feina de les 06:15 generava l'informe sense el son de la nit: Garmin només
