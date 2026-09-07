@@ -447,7 +447,7 @@ Escriu un **validador de l'esquema** (`pydantic` al backend, `zod` a l'app) i co
 
 Una feina programada, no una crida des de l'app. Dos ritmes:
 
-- **Diari, al matí** (06:00): mira les dades de recuperació de la nit i l'activitat d'ahir, i decideix sobre la sessió d'avui.
+- **Diari, al matí** (quan arriba el son de la nit, intents cada 20 min de 06:00 a 12:00 — decisió 2026-09-07): mira les dades de recuperació de la nit i l'activitat d'ahir, i decideix sobre la sessió d'avui.
 - **Setmanal, diumenge al vespre**: revisió de la setmana i ajust de la següent.
 - **Sota demanda**: quan l'atleta reporta una molèstia, un canvi d'agenda o una cursa nova.
 

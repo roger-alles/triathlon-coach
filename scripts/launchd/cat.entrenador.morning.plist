@@ -9,8 +9,28 @@
     <string>/Users/roger/claude/projects/app1/scripts/coach-job.sh</string>
     <string>morning</string>
   </array>
+  <!-- cada 20 min de 06:00 a 11:40: coach.gate decideix quan generar (son d'avui present, un cop al dia) -->
   <key>StartCalendarInterval</key>
-  <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>15</integer></dict>
+  <array>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>20</integer></dict>
+    <dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>40</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>20</integer></dict>
+    <dict><key>Hour</key><integer>7</integer><key>Minute</key><integer>40</integer></dict>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>20</integer></dict>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>40</integer></dict>
+    <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>20</integer></dict>
+    <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>40</integer></dict>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>20</integer></dict>
+    <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>40</integer></dict>
+    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>20</integer></dict>
+    <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>40</integer></dict>
+  </array>
   <key>StandardOutPath</key><string>/Users/roger/claude/projects/app1/logs/launchd-morning.log</string>
   <key>StandardErrorPath</key><string>/Users/roger/claude/projects/app1/logs/launchd-morning.log</string>
 </dict>
