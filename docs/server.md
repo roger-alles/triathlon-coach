@@ -20,7 +20,7 @@
 | Secrets (`.env`, mateix contingut que al Mac) | `/home/entrenador/entrenador-triatlo/.env` (600) |
 | Tokens de Garmin | `/home/entrenador/.garminconnect/garmin_tokens.json` (600) |
 | Entorn Python | `/home/entrenador/entrenador-triatlo/.venv` (Python 3.14) |
-| Logs de les feines | `/home/entrenador/entrenador-triatlo/logs/coach-{morning,evening,weekly}.log` |
+| Logs de les feines | `/home/entrenador/entrenador-triatlo/logs/coach-{morning,sync,evening,weekly}.log` |
 | Log del desplegament diari | `.../logs/deploy.log` |
 | Programació | `crontab -l -u entrenador` |
 
@@ -28,10 +28,14 @@
 
 | Feina | Cron | Què fa |
 |---|---|---|
-| Matí | `*/20 6-11 * * *` | `coach-job.sh morning`: sync; `coach.gate` genera l'informe només quan Garmin ja té el son d'avui i encara no hi ha informe del matí |
-| Vespre | `30 21 * * *` | `coach-job.sh evening`: preview de demà |
-| Setmanal | `30 20 * * 0` | `coach-job.sh weekly` |
+| Matí | `*/5 6-11 * * *` | `coach-job.sh morning`: primer `coach.gate` (¿ja hi ha informe? → BD; ¿Garmin té el son d'avui? → 1 petició); només si GENERA: sync complet + informe. Un cop al dia; després, zero peticions |
+| Sync horari | `0 6-22 * * *` | `coach-job.sh sync`: sync complet perquè els entrenos surtin a l'app en menys d'una hora |
+| Vespre | `30 21 * * *` | `coach-job.sh evening`: sync + preview de demà |
+| Setmanal | `30 20 * * 0` | `coach-job.sh weekly`: sync + revisió setmanal |
 | Desplegament | `50 5 * * *` | `git pull --ff-only` de `main` + `pip install -r requirements.txt` |
+
+Cost amb Garmin un dia típic: ~25 intents buits × 1 petició + 1 sync del matí
++ 17 syncs horaris × ~17 ≈ 330 peticions, repartides tot el dia.
 
 Tot el que es fusiona a `main` a GitHub és al servidor l'endemà a les 05:50.
 Per desplegar a l'acte: `ssh entrenador 'sudo -u entrenador -H git -C ~/entrenador-triatlo pull --ff-only'`.
