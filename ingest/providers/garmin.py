@@ -47,3 +47,10 @@ class GarminProvider:
             payload[key] = method(day.isoformat())
             time.sleep(PAUSE_SEC)
         return payload
+
+    def fetch_sleep_seconds(self, day: date) -> int | None:
+        """Només el son d'un dia, una petició: per a la porta del matí.
+        None mentre Garmin encara no ha rebut la nit (el rellotge no ha sincronitzat)."""
+        payload = self.client.get_sleep_data(day.isoformat())
+        time.sleep(PAUSE_SEC)
+        return (payload or {}).get("dailySleepDTO", {}).get("sleepTimeSeconds")
