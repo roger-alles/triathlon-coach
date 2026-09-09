@@ -11,6 +11,18 @@ coach incorpora `test_results` (tots, sense finestra: una marca val fins que
 n'hi ha una de més nova; valors aplanats + títol de la sessió). Els prompts
 daily/weekly v1 en descriuen l'ús; no es bumpa la versió perquè és una
 addició, no un canvi de conducta.
+## 2026-09-09 — El test de 800 m del 10/09 se substitueix per natació a ritme de cursa
+
+En Roger va qüestionar el test ("ja sé que faig els 1000 m en 22 min a mar").
+Tenia raó: el test comparava amb el de l'01/09, que no es va fer (cap resultat
+a `test_result`), i un 800 a piscina no es pot posar al costat del 1000 m a
+mar del 03/09 (22:30, 2:15/100, mesurat per l'entrenador). Un tot-o-res en
+setmana de càrrega (TSB -12,7), entre la bici de repunts i el simulacre de
+dissabte, sense res a mesurar. Substituït per 3×400 m a 2:15/100 amb
+orientació (1600 m, 40 min), millor a mar: entrena mantenir el ritme i
+orientar-se, que és el que falta per Fornells. Un test de piscina té sentit
+després de la cursa, com a base del 2027. Validador: 44 sessions, només els 2
+avisos R9 coneguts. Aprovat per en Roger en conversa el 09/09.
 
 ## 2026-09-07 — Porta del matí barata: primer preguntar, després sincronitzar
 

@@ -144,7 +144,7 @@ blocks:
       protocol: "Nedar seguit i còmode fins a un màxim de 800 m; anotar metres i temps per 100."
       records: [distance_m, pace_sec_100m]
     duration_sec_target: 2400
-    rationale: "Punt de partida real, ja amb dos banys al cos. Es compara amb el test del 10/09."
+    rationale: "Punt de partida real, ja amb dos banys al cos. (El test del 10/09 amb què s'havia de comparar es va substituir el 09/09; la referència vàlida és el 1000 m a mar del 03/09.)"
     structure:
       steps:
         - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
@@ -375,23 +375,17 @@ blocks:
 
   - date: 2026-09-10
     sport: swim
-    session_type: test
-    title: "800 m continus cronometrats"
+    session_type: race_pace
+    title: "Ritme de cursa amb orientació"
     priority: key
-    is_test: true
-    test:
-      metric: swim_continuous
-      protocol: "800 m seguits a piscina, cronometrats."
-      records: [duration_sec, pace_sec_100m]
-      compare_with: 2026-09-01
-    duration_sec_target: 2700
-    rationale: "Aquí es veu si la freqüència està funcionant."
+    duration_sec_target: 2400
+    distance_m_target: 1600
+    rationale: "Substitueix el test de 800 m (decisió 09/09): no tenia base de comparació (el test de l'01/09 no es va fer) i piscina no es compara amb el 1000 m a mar del 03/09 (22:30, 2:15/100). Entrena el que falta per Fornells: mantenir el ritme i orientar-se. Millor a mar."
     structure:
       steps:
         - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
-        - {phase: main, distance_m: 800, target: {type: rpe, value: 7}, note: "continu, cronometrat"}
-        - {phase: main, repeats: 6, work: {distance_m: 50, target: {type: rpe, value: 3}}, recovery: {duration_sec: 20}}
-        - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
+        - {phase: main, repeats: 3, work: {distance_m: 400, target: {type: pace_sec_100m, value: 135, label: "ritme de cursa (2:15/100)"}, note: "aixecar el cap cada 8-10 braçades, com a la cursa"}, recovery: {duration_sec: 60}}
+        - {phase: cooldown, distance_m: 200, target: {type: rpe, value: 2}}
 
   - date: 2026-09-11
     sport: run
