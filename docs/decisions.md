@@ -2,6 +2,15 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-09 — El coach veu les marques (`test_results` al snapshot)
+
+`test_result` existia des de la F3 però cap codi la llegia: els tests eren
+notes d'activitat per al coach. Es registra el 1000 m a mar del 03/09 (22:30,
+135 s/100, mesurat per l'entrenador) com a primer resultat, i el snapshot del
+coach incorpora `test_results` (tots, sense finestra: una marca val fins que
+n'hi ha una de més nova; valors aplanats + títol de la sessió). Els prompts
+daily/weekly v1 en descriuen l'ús; no es bumpa la versió perquè és una
+addició, no un canvi de conducta.
 ## 2026-09-09 — El test de 800 m del 10/09 se substitueix per natació a ritme de cursa
 
 En Roger va qüestionar el test ("ja sé que faig els 1000 m en 22 min a mar").
