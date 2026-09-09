@@ -132,6 +132,22 @@ def _recent_answers(conn, today: date) -> list[dict]:
     return queries._rows_to_dicts(cur)
 
 
+def _test_results(conn) -> list[dict]:
+    """Marques de referència: tests fets (test_result), els valors aplanats.
+    Sense finestra temporal: una marca val fins que n'hi ha una de més nova."""
+    cur = conn.execute("""
+        select t.local_date, t.metric, t.values, p.title as session_title
+        from test_result t
+        left join plan_session p on p.id = t.plan_session_id
+        order by t.local_date""")
+    rows = []
+    for row in queries._rows_to_dicts(cur):
+        values = row.pop("values") or {}
+        rows.append({"local_date": row["local_date"], "metric": row["metric"],
+                     **values, "session_title": row.get("session_title")})
+    return rows
+
+
 def _past_compliance(conn, today: date) -> dict:
     """El compliment del coach mira enrere; el futur ja és a plan_next_14d."""
     result = queries.compliance(conn, COMPLIANCE_WEEKS)
@@ -154,6 +170,7 @@ def build_context(conn, today: date | None = None) -> dict:
         "form_curve_28d": queries.form_curve(conn, RECENT_DAYS),
         "recovery_last_14d": _recovery(conn, today),
         "compliance": _past_compliance(conn, today),
+        "test_results": _test_results(conn),
         "plan_next_14d": _plan_ahead(conn, today),
         "recent_athlete_notes": _recent_notes(conn, today),
         "athlete_answers_last_7d": _recent_answers(conn, today),

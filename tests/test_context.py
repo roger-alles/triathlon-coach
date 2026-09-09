@@ -66,3 +66,20 @@ def test_build_context_includes_athlete_answers_key():
 
     src = inspect.getsource(context.build_context)
     assert "athlete_answers_last_7d" in src
+
+
+def test_test_results_arriba_al_snapshot_com_a_marques():
+    from coach.context import _test_results
+
+    conn = _Conn(
+        ["local_date", "metric", "values", "session_title"],
+        [(date(2026, 9, 3), "swim_continuous",
+          {"distance_m": 1000, "duration_sec": 1350, "pace_sec_100m": 135,
+           "environment": "open_water"},
+          "Continuïtat")],
+    )
+    rows = _test_results(conn)
+    assert rows == [{"local_date": "2026-09-03", "metric": "swim_continuous",
+                     "distance_m": 1000, "duration_sec": 1350, "pace_sec_100m": 135,
+                     "environment": "open_water", "session_title": "Continuïtat"}]
+    assert "test_result" in conn.sql
