@@ -32,13 +32,13 @@
 | Sync horari | `0 6-22 * * *` | `coach-job.sh sync`: sync complet perquè els entrenos surtin a l'app en menys d'una hora |
 | Vespre | `30 21 * * *` | `coach-job.sh evening`: sync + preview de demà |
 | Setmanal | `30 20 * * 0` | `coach-job.sh weekly`: sync + revisió setmanal |
-| Desplegament | `50 5 * * *` | `git pull --ff-only` de `main` + `pip install -r requirements.txt` |
+| Desplegament (crontab de root) | `50 5 * * *` | `git pull --ff-only` de `main` + `pip install` + `npm install` a `app/` + reinici del servei `expo-dev` |
 
 Cost amb Garmin un dia típic: ~25 intents buits × 1 petició + 1 sync del matí
 + 17 syncs horaris × ~17 ≈ 330 peticions, repartides tot el dia.
 
 Tot el que es fusiona a `main` a GitHub és al servidor l'endemà a les 05:50.
-Per desplegar a l'acte: `ssh entrenador 'sudo -u entrenador -H git -C ~/entrenador-triatlo pull --ff-only'`.
+Per desplegar a l'acte: `ssh entrenador 'sudo -u entrenador -H git -C ~/entrenador-triatlo pull --ff-only && systemctl restart expo-dev'`.
 
 ## Operacions habituals
 
@@ -59,8 +59,33 @@ scp ~/.garminconnect/garmin_tokens.json entrenador:/root/ && ssh entrenador 'ins
 
 Un `429` al login vol dir IP bloquejada temporalment: esperar, no reintentar en bucle.
 
+## App mòbil: Expo Go contra el servidor (des del 2026-09-07 nit)
+
+L'app no s'instal·la: Expo Go la descarrega del servidor d'Expo (Metro), que
+corre aquí com a servei `systemd`, permanent i amb reinici automàtic.
+
+- Adreça per a Expo Go: **`exp://<IP del servidor>:8081`** (Enter URL manually, o
+  surt sola a Home > Development servers). Cal el mateix compte d'Expo al mòbil
+  i al servidor (`rogeralles`; sessió copiada a `/home/entrenador/.expo/state.json`).
+- Servei: `/etc/systemd/system/expo-dev.service` (usuari `entrenador`,
+  `npx expo start --port 8081 --host lan`, `REACT_NATIVE_PACKAGER_HOSTNAME=<IP del servidor>`).
+  `systemctl status|restart expo-dev`. Log: `logs/expo-dev.log`.
+- Tallafocs de Clouding: regla d'entrada TCP 8081 des de qualsevol origen
+  (afegida per en Roger al panell). Sense ella, el port no respon des de fora.
+- Primera compilació del paquet iOS: ~60 s (1 vCPU); després queda en memòria
+  i l'app s'obre en segons. Si el servei es reinicia, la primera obertura torna
+  a trigar un minut.
+- Secrets de l'app: `app/.env` (`EXPO_PUBLIC_*`, clau anon de Supabase; van
+  dins del paquet, com al Mac).
+- L'avís `react-native-devtools: libatk-1.0.so.0` al log és innocu: és el
+  depurador gràfic, que no té sentit en un servidor sense pantalla.
+
+Per què això i no TestFlight: en Roger prefereix seguir amb Expo Go de moment
+(canvis visibles a l'acte sense compilar). Limitacions: cada SDK nou d'Expo Go
+trenca l'app fins que es puja; sense notificacions push; servidor de
+desenvolupament exposat en HTTP (protecció: el login obligatori d'Expo Go 57).
+
 ## Què NO hi ha al servidor
 
-- L'app mòbil: encara es serveix des del Mac amb Expo Go (pendent: TestFlight o PWA).
 - El servidor MCP del workspace: corre al Mac.
 - Cap dada de salut en fitxers: tot va a Supabase; `data/` no es fa servir aquí.

@@ -23,6 +23,20 @@ orientació (1600 m, 40 min), millor a mar: entrena mantenir el ritme i
 orientar-se, que és el que falta per Fornells. Un test de piscina té sentit
 després de la cursa, com a base del 2027. Validador: 44 sessions, només els 2
 avisos R9 coneguts. Aprovat per en Roger en conversa el 09/09.
+## 2026-09-07 — L'app també surt del Mac: servidor d'Expo a `alberginia`
+
+Amb les feines al servidor, l'única dependència del Mac que quedava era la
+pròpia app: Expo Go la descarrega del servidor de desenvolupament, que corria
+al Mac (adormit de nit, i només a la WiFi de casa). En Roger té el programa de
+desenvolupador d'Apple, però prefereix seguir amb Expo Go: els canvis es veuen
+sense compilar. Solució: el servidor d'Expo passa a `alberginia` com a servei
+`systemd` (`expo-dev`), exposat a `exp://<IP del servidor>:8081` (regla TCP 8081
+al tallafocs de Clouding), amb la sessió d'Expo d'en Roger copiada perquè
+Expo Go 57 exigeix el mateix compte als dos costats. El desplegament diari
+també fa `npm install` i reinicia el servei. Verificat: manifest i paquet iOS
+(9,5 MB, 1820 mòduls, 58 s la primera vegada) servits des de la IP pública.
+Queda documentat a `docs/server.md` que TestFlight és el pas següent quan
+calgui icona pròpia, notificacions o independència dels SDK d'Expo Go.
 
 ## 2026-09-07 — Porta del matí barata: primer preguntar, després sincronitzar
 
