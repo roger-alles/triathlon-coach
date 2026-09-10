@@ -148,6 +148,18 @@ def _test_results(conn) -> list[dict]:
     return rows
 
 
+def _logistics(conn, today: date) -> list[dict]:
+    """Tasques de logística pendents dels propers 10 dies (viatge, dorsal...):
+    no fer-les costa la cursa, i el coach les ha de recordar."""
+    cur = conn.execute("""
+        select local_date, title, detail, blocking, done
+        from logistics_task
+        where done = false and local_date between %s and %s
+        order by local_date, blocking desc""",
+        (today, today + timedelta(days=10)))
+    return queries._rows_to_dicts(cur)
+
+
 def _past_compliance(conn, today: date) -> dict:
     """El compliment del coach mira enrere; el futur ja és a plan_next_14d."""
     result = queries.compliance(conn, COMPLIANCE_WEEKS)
@@ -174,5 +186,6 @@ def build_context(conn, today: date | None = None) -> dict:
         "plan_next_14d": _plan_ahead(conn, today),
         "recent_athlete_notes": _recent_notes(conn, today),
         "athlete_answers_last_7d": _recent_answers(conn, today),
+        "logistics_next_10d": _logistics(conn, today),
     }
     return compact(context)

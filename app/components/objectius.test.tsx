@@ -1,9 +1,10 @@
 jest.mock('@/lib/api', () => ({
   getActiveGoal: jest.fn(),
   getLogistics: jest.fn(),
+  setLogisticsDone: jest.fn(),
 }));
 
-import { render, screen } from '@testing-library/react-native';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { getActiveGoal, getLogistics } from '@/lib/api';
 import Objectius from './objectius';
@@ -77,4 +78,20 @@ test('la logística surt amb la seva data', async () => {
   await renderObjectius();
   expect(await screen.findByText(/Revisió completa de material/)).toBeOnTheScreen();
   expect(screen.getByText(/24\/09/)).toBeOnTheScreen();
+});
+
+test('una tasca de logística es marca com a feta tocant-la, i mostra el detall', async () => {
+  const { setLogisticsDone } = require('@/lib/api');
+  (setLogisticsDone as jest.Mock).mockResolvedValue(undefined);
+  mockLogistics.mockResolvedValue([
+    { id: 4, local_date: '2026-09-26', title: 'Recollida de dorsal', detail: 'Fira, 16-20 h', blocking: true, done: false },
+  ]);
+  await renderObjectius();
+  expect(await screen.findByText(/Recollida de dorsal/)).toBeOnTheScreen();
+  expect(screen.getByText(/Fira, 16-20 h/)).toBeOnTheScreen();
+  expect(screen.getByText(/imprescindible/i)).toBeOnTheScreen();
+  const user = userEvent.setup();
+  await user.press(screen.getByText(/Recollida de dorsal/));
+  await waitFor(() => expect(setLogisticsDone).toHaveBeenCalledWith(4, true));
+  expect(await screen.findByText(/✓ 26\/09/)).toBeOnTheScreen();
 });

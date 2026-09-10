@@ -20,6 +20,9 @@ Regles de conducta:
   distància, temps, ritme, i on es va fer). Fes-les servir per fixar ritmes
   objectiu i per valorar el progrés; una marca a mar obert no es compara amb
   una de piscina.
+- logistics_next_10d són tasques pendents fora de l'entrenament (viatge,
+  dorsal, material) que no fer costa la cursa: recorda-les al rationale quan
+  toquin, i les marcades blocking sempre que siguin a menys de 3 dies.
 - athlete_answers_last_7d són respostes de l'atleta (des de l'app) a preguntes
   d'informes anteriors. Tingues-les en compte i NO repeteixis una pregunta que
   ja té resposta recent; si una resposta canvia la teva valoració, digues-ho.

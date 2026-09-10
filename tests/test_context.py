@@ -83,3 +83,20 @@ def test_test_results_arriba_al_snapshot_com_a_marques():
                      "distance_m": 1000, "duration_sec": 1350, "pace_sec_100m": 135,
                      "environment": "open_water", "session_title": "Continuïtat"}]
     assert "test_result" in conn.sql
+
+
+def test_logistics_next_days_reads_logistics_task_with_detail_and_blocking():
+    from coach.context import _logistics
+
+    conn = _Conn(
+        ["local_date", "title", "detail", "blocking", "done"],
+        [(date(2026, 9, 26), "Recollida de dorsal · Fira del Participant",
+          "Dissabte 16-20 h. Sense dorsal no hi ha cursa.", True, False)],
+    )
+    rows = _logistics(conn, date(2026, 9, 20))
+    assert rows == [{"local_date": "2026-09-26",
+                     "title": "Recollida de dorsal · Fira del Participant",
+                     "detail": "Dissabte 16-20 h. Sense dorsal no hi ha cursa.",
+                     "blocking": True, "done": False}]
+    assert "logistics_task" in conn.sql
+    assert "done = false" in conn.sql  # les fetes ja no cal recordar-les

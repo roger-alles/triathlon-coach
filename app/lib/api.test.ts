@@ -188,3 +188,14 @@ test('els errors de la BD no es traguen en silenci', async () => {
   mockFrom.mockReturnValue(chainResolving({ data: null, error: { message: 'permission denied' } }, 'maybeSingle'));
   await expect(getLatestDailyReport()).rejects.toThrow('permission denied');
 });
+
+test('marcar una tasca de logística com a feta: només la columna done', async () => {
+  const { setLogisticsDone } = require('./api');
+  const chain = chainResolving({ data: null, error: null });
+  chain.update = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  await setLogisticsDone(4, true);
+  expect(mockFrom).toHaveBeenCalledWith('logistics_task');
+  expect(chain.update).toHaveBeenCalledWith({ done: true });
+  expect(chain.eq).toHaveBeenCalledWith('id', 4);
+});

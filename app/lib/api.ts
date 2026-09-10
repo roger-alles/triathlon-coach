@@ -179,6 +179,11 @@ export async function getLogistics(goalId: number): Promise<LogisticsTask[]> {
   return (data ?? []) as LogisticsTask[];
 }
 
+export async function setLogisticsDone(id: number, done: boolean): Promise<void> {
+  const { error } = await supabase.from('logistics_task').update({ done }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 export async function getLatestDailyReport(): Promise<DailyReport | null> {
   const { data, error } = await supabase
     .from('coach_report')
