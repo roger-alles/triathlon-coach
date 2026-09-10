@@ -92,3 +92,25 @@ test('semàfor i esports', () => {
   expect(sportLabel('brick')).toBe('Brick');
   expect(sportLabel('rest')).toBe('Descans');
 });
+
+test('formatDuration arrossega els minuts: mai "1 h 60 min"', () => {
+  expect(formatDuration(3599)).toBe('1 h');
+  expect(formatDuration(7190)).toBe('2 h');
+  expect(formatDuration(5370)).toBe('1 h 30 min');
+});
+
+test('segments de simulacre i cursa (multisport)', () => {
+  const { formatSegment } = require('./format');
+  expect(sportLabel('multisport')).toBe('Triatló');
+  expect(
+    formatSegment({ sport: 'swim', venue: 'open_water', target: { type: 'rpe', value: 7 }, distance_m: 800 })
+  ).toBe('Natació 800 m · RPE 7 · mar');
+  expect(formatSegment({ sport: 'transition', timed: true, transition: 't1' })).toBe('T1 cronometrada');
+  expect(
+    formatSegment({ sport: 'bike', target: { type: 'rpe', value: 7, label: 'esforç de cursa' }, distance_m: 34000 })
+  ).toBe('Bici 34 km · RPE 7');
+  expect(
+    formatSegment({ sport: 'run', target: { type: 'pace_sec_km', value: 250, label: 'ritme objectiu' }, distance_m: 3000 })
+  ).toBe('Cursa 3 km · 4:10/km');
+  expect(formatSegment({ sport: 'run', distance_m: 9500 })).toBe('Cursa 9,5 km');
+});
