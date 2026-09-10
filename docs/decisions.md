@@ -20,6 +20,24 @@ Correcció de registre: la bici específica + brick del 02/09 es van fer el
 03/09 (bici 83', cursa 14'). Les sessions passen al 03/09 (`superseded_by`
 31→69, 32→70), la bici com a `support` perquè aquell dia la clau és la natació
 (R14). Validador OK (44 sessions).
+## 2026-09-10 — Alerta taronja del 09/09: bici traslladada al 10/09, i natació del 08/09 recuperada
+
+El 09/09 (alerta taronja per tempestes a les Balears) no es va poder fer ni
+la bici de blocs ni res. El 10/09, amb el millor despertar del mes (FC repòs
+45, estrès 9, bateria 100) i una setmana molt buida, es fan les dues sessions:
+bici + brick al matí (repunts asseguts si fa vent), natació de ritme de cursa
+a la tarda a piscina (avís costaner, aigua prohibida). Mecànica del pla: les
+sessions del 09/09 queden `superseded_by` les del 10/09 (versionat, res
+s'esborra; les entrades surten del yaml perquè el seed no reinserti la data
+vella), i la bici del 10/09 és `support`, no `key`: R14 no admet dues clau el
+mateix dia, i si només es pot fer una és la natació (limitador); la bici la
+cobreixen el simulacre del 12 i els blocs del 16. Sense el supersede, R1
+comptava les hores del 09/09 perdut més les del 10/09 (+16% setmanal).
+
+La natació del 08/09 ("Sèries mitjanes") constava com a perduda: es va fer a
+piscina cronometrada amb el rellotge, sense registrar; les dues bicis curtes
+del dia eren el trajecte. Entrada manual -202609081 (45 min, 1700 m = valors
+del pla, no mesurats; càrrega estimada) i relink: completed.
 
 ## 2026-09-09 — El coach veu les marques (`test_results` al snapshot)
 

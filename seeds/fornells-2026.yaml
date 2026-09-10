@@ -351,20 +351,20 @@ blocks:
         - {phase: main, repeats: 4, work: {distance_m: 50, target: {type: rpe, value: 8}}, recovery: {duration_sec: 30}}
         - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
 
-  - date: 2026-09-09
+  - date: 2026-09-10
     sport: bike
     session_type: race_pace
     title: "Blocs amb repunts"
-    priority: key
+    priority: support
     duration_sec_target: 4800
-    rationale: "Entrenar a no deixar de pedalar quan corona: es recupera pedalant, no planejant."
+    rationale: "Traslladada del 09/09 (alerta taronja per tempestes; decisió 10/09). Prioritat support i no key: el mateix dia hi ha la natació de ritme de cursa (R14), i si només es pot fer una, és la natació: la bici la cobreixen el simulacre del 12 i els blocs del 16. Entrenar a no deixar de pedalar quan corona: es recupera pedalant, no planejant. Amb vent fort, repunts asseguts."
     structure:
       steps:
         - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
-        - {phase: main, repeats: 3, work: {duration_sec: 720, target: {type: rpe, value: 7, label: "esforç de cursa"}, contains: {repeats: 2, duration_sec: 40, target: {type: rpe, value: 9}, note: "dempeus"}}, recovery: {duration_sec: 300, target: {type: rpe, value: 3}}}
+        - {phase: main, repeats: 3, work: {duration_sec: 720, target: {type: rpe, value: 7, label: "esforç de cursa"}, contains: {repeats: 2, duration_sec: 40, target: {type: rpe, value: 9}, note: "dempeus (asseguts si fa vent fort)"}}, recovery: {duration_sec: 300, target: {type: rpe, value: 3}}}
         - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
 
-  - date: 2026-09-09
+  - date: 2026-09-10
     sport: brick
     session_type: bike_run
     title: "Brick"
