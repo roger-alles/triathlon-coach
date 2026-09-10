@@ -10,7 +10,7 @@ import {
 
 import { ThemedText } from '@/components/themed-text';
 import { ActivityDetail, getActivity, updateActivitySubjective } from '@/lib/api';
-import { formatDateCa, formatDuration, sportLabel } from '@/lib/format';
+import { formatDateCa, formatDuration, sportEmoji, sportLabel } from '@/lib/format';
 
 const FEELINGS: [number, string][] = [
   [1, 'Fatal'],
@@ -82,7 +82,7 @@ export default function Activitat({ id }: { id: number }) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <ThemedText style={styles.title}>
-        {sportLabel(activity.sport)} · {formatDateCa(new Date(y, m - 1, d))}
+        {sportEmoji(activity.sport)} {sportLabel(activity.sport)} · {formatDateCa(new Date(y, m - 1, d))}
       </ThemedText>
 
       <View style={styles.card}>

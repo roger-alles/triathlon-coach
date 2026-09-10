@@ -121,3 +121,15 @@ test('rang de setmana en català: un mes o dos, amb apòstrof on toca', () => {
   expect(formatWeekRangeCa('2026-09-14', '2026-09-20')).toBe('14 – 20 de setembre');
   expect(formatWeekRangeCa('2026-09-28', '2026-10-04')).toBe("28 de setembre – 4 d'octubre");
 });
+
+test('emoji de modalitat per llegir la setmana d\'un cop d\'ull', () => {
+  const { sportEmoji } = require('./format');
+  expect(sportEmoji('swim')).toBe('🏊');
+  expect(sportEmoji('bike')).toBe('🚴');
+  expect(sportEmoji('run')).toBe('🏃');
+  expect(sportEmoji('brick')).toBe('🚴🏃');
+  expect(sportEmoji('multisport')).toBe('🏊🚴🏃');
+  expect(sportEmoji('rest')).toBe('🛌');
+  expect(sportEmoji('strength')).toBe('🏋️');
+  expect(sportEmoji('desconegut')).toBe('');
+});
