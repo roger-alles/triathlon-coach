@@ -28,6 +28,14 @@ import { supabase } from '@/lib/supabase';
 
 const VERDICT_LABEL: Record<string, string> = { green: 'VERD', amber: 'ÀMBAR', red: 'VERMELL' };
 
+function previewLabel(report: DailyReport): string {
+  const [y, m, d] = report.windowStart.split('-').map(Number);
+  const day = formatDateCa(new Date(y, m - 1, d));
+  return report.kind === 'preview_tomorrow'
+    ? `Preview per a demà, ${day.toLowerCase()} · el semàfor definitiu arriba al matí`
+    : `Preview d'ahir al vespre per a avui · l'informe del matí arriba amb el son`;
+}
+
 export default function Avui() {
   const [report, setReport] = useState<DailyReport | null>(null);
   const [sessions, setSessions] = useState<PlanSession[]>([]);
@@ -80,8 +88,8 @@ export default function Avui() {
 
       {report ? (
         <View style={[styles.banner, { backgroundColor: verdictColor(report.verdict) }]}>
-          {report.isPreview && (
-            <Text style={styles.bannerPreview}>{"Preview d'ahir al vespre · l'informe del matí arriba amb el son"}</Text>
+          {report.kind !== 'today' && (
+            <Text style={styles.bannerPreview}>{previewLabel(report)}</Text>
           )}
           <Text style={styles.bannerVerdict}>{VERDICT_LABEL[report.verdict] ?? report.verdict}</Text>
           <Text style={styles.bannerSummary}>{report.summary}</Text>

@@ -10,9 +10,11 @@ export type DailyReport = {
   summary: string;
   rationale: string;
   questions: string[];
-  windowStart: string;
-  // creat abans del dia que descriu (el preview del vespre): l'app ho ha de dir
-  isPreview: boolean;
+  windowStart: string; // el dia de què parla l'informe
+  // 'today': informe del matí d'avui · 'preview_tomorrow': el del vespre, parla
+  // de demà · 'preview_today': el d'ahir al vespre, parla d'avui (encara no hi
+  // ha el del matí)
+  kind: 'today' | 'preview_tomorrow' | 'preview_today';
 };
 
 export type PlanSession = {
@@ -182,20 +184,26 @@ export async function getLogistics(goalId: number): Promise<LogisticsTask[]> {
   return (data ?? []) as LogisticsTask[];
 }
 
-// L'informe que parla del dia demanat (window_start), el més recent: al matí és
-// l'informe del dia; abans, el preview de la nit anterior (isPreview = true).
-export async function getLatestDailyReport(dateISO: string): Promise<DailyReport | null> {
+// L'últim informe diari, etiquetat segons de quin dia parla respecte d'avui:
+// a partir de les 21:30 és el preview de demà (per preparar-lo i visualitzar-lo);
+// al matí, fins que arriba l'informe del dia, és el preview d'ahir per avui.
+export async function getLatestDailyReport(todayISO: string): Promise<DailyReport | null> {
   const { data, error } = await supabase
     .from('coach_report')
     .select('id, created_at, window_start, output')
     .eq('report_type', 'daily')
-    .eq('window_start', dateISO)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
   const output = data.output as Record<string, any>;
+  const kind =
+    data.window_start > todayISO
+      ? 'preview_tomorrow'
+      : localDateISO(new Date(data.created_at)) < data.window_start
+        ? 'preview_today'
+        : 'today';
   return {
     id: data.id,
     createdAt: data.created_at,
@@ -204,7 +212,7 @@ export async function getLatestDailyReport(dateISO: string): Promise<DailyReport
     rationale: output.rationale ?? '',
     questions: output.questions_for_athlete ?? [],
     windowStart: data.window_start,
-    isPreview: localDateISO(new Date(data.created_at)) < data.window_start,
+    kind,
   };
 }
 

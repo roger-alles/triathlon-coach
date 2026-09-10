@@ -37,7 +37,7 @@ const report = {
   rationale: 'El TSB ha caigut a -24.6…',
   questions: ['Com notes les cames?'],
   windowStart: '2026-08-29',
-  isPreview: false,
+  kind: 'today',
 };
 
 const session = {
@@ -107,11 +107,17 @@ test('errors de càrrega es mostren, no es traguen', async () => {
   expect(await screen.findByText(/Network request failed/)).toBeOnTheScreen();
 });
 
-test("el preview del vespre es marca com a tal, no com a informe d'avui", async () => {
-  mockReport.mockResolvedValue({ ...report, createdAt: '2026-08-28T19:31:00Z', isPreview: true });
+test('a la nit, el preview de demà surt amb el dia de què parla', async () => {
+  mockReport.mockResolvedValue({ ...report, createdAt: '2026-08-29T19:31:00Z', windowStart: '2026-08-30', kind: 'preview_tomorrow' });
   await renderAvui();
-  expect(await screen.findByText(/Preview d'ahir al vespre/)).toBeOnTheScreen();
+  expect(await screen.findByText(/Preview per a demà, diumenge 30 d'agost/)).toBeOnTheScreen();
   expect(mockReport).toHaveBeenCalledWith('2026-08-29');
+});
+
+test("al matí sense informe del dia, el preview d'ahir es marca com a tal", async () => {
+  mockReport.mockResolvedValue({ ...report, createdAt: '2026-08-28T19:31:00Z', kind: 'preview_today' });
+  await renderAvui();
+  expect(await screen.findByText(/Preview d'ahir al vespre per a avui/)).toBeOnTheScreen();
 });
 
 test('el simulacre (segments) es pinta, no surt buit', async () => {
