@@ -149,3 +149,11 @@ test('cada sessió porta l\'emoji de la seva modalitat davant del títol', async
   expect(screen.getByText('🚴🏃')).toBeOnTheScreen();
   expect(screen.getByText('🏃')).toBeOnTheScreen();
 });
+
+test('un títol llarg salta de línia dins la targeta en lloc d\'empènyer CLAU fora', async () => {
+  await renderSetmana();
+  await screen.findByText(/Dilluns 24/);
+  // El títol ha de poder encongir-se dins la fila (flex: 1); si no, el text
+  // no fa wrap i CLAU surt de la targeta.
+  expect(screen.getByText('Rodatge suau (canvi del coach)')).toHaveStyle({ flex: 1 });
+});
