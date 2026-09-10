@@ -11,9 +11,12 @@
     .venv/bin/python -m coach.run daily [--dry-run]
     .venv/bin/python -m coach.run weekly [--dry-run]
 
---dry-run fa el cicle sencer (amb crida real a l'API) però no escriu res al
-pla; desa igualment el coach_report marcant-ho al summary. És el mode d'ús
-fins a la cursa del 27S: la spec mana no tocar el pla de Fornells.
+El mode d'aplicació es llegeix de la BD (app_setting.coach_apply_mode, que
+l'app pot canviar): 'dry_run' fa el cicle sencer (amb crida real a l'API)
+però no escriu res al pla; 'hybrid' aplica sol els canvis petits (coach/
+classify.py) i deixa la resta com a proposta pendent per a l'app. --dry-run
+força dry_run sigui quin sigui el valor de la BD. Fins a la cursa del 27S el
+valor és dry_run: la spec mana no tocar el pla de Fornells.
 
 --tomorrow és el preview del vespre: build_context() rep sempre el dia real
 com a `today` i, a més, `report_for=demà` — el snapshot porta totes dues
@@ -36,17 +39,29 @@ from pathlib import Path
 import psycopg
 from dotenv import load_dotenv
 
+from coach.classify import classify
 from coach.context import build_context
-from coach.llm import CoachLLM, load_prompt
+from coach.llm import CoachLLM, OutputCutOff, load_prompt
 from coach.plan_loader import plan_from_db
 from coach.models import Athlete, History, Session, Violation
 from coach.rules import validate_plan
+from coach.settings import apply_mode
 from coach.structure import validate_structure
 
 ROOT = Path(__file__).parent.parent
 MAX_ATTEMPTS = 3  # 1 proposta + 2 correccions (spec §7 pas 4)
 
 NEW_SESSION_REQUIRED = ("sport", "session_type", "title", "structure_json")
+
+# Columnes que una versió nova hereta de la vella. Fins al 10/09 modify/move
+# n'ometien chained_after, test_spec, transition_practice (i modify,
+# distance_m_target): el brick perdia la bici pare i R14/R3 fallaven després.
+INHERITED = ("goal_id", "block_id", "is_test", "test_spec", "rehearses_goal",
+             "is_goal_event", "chained_after", "transition_practice")
+
+
+class StaleProposal(Exception):
+    """La proposta parla d'una sessió que ja no és la viva (o ja no és pendent)."""
 
 
 def semantic_errors(changes: list[dict], plan_by_id: dict[int, Session],
@@ -133,7 +148,14 @@ def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
     warnings: list[Violation] = []
 
     for _ in range(MAX_ATTEMPTS):
-        output, usage = llm.generate(system, messages)
+        try:
+            output, usage = llm.generate(system, messages, report_type)
+        except OutputCutOff as e:
+            # sense JSON de fiar: una tanda d'infraccions més, i que sigui breu
+            validation_history.append([f"resposta tallada per longitud ({e}): "
+                                       f"sigues més compacte, keep sense comentaris"])
+            messages += [{"role": "user", "content": _feedback_message(validation_history[-1])}]
+            continue
         total_usage["model"] = usage["model"]
         total_usage["input_tokens"] += usage["input_tokens"]
         total_usage["output_tokens"] += usage["output_tokens"]
@@ -164,70 +186,131 @@ def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
 
 # ─── costat DB ───────────────────────────────────────────────────────
 
-def apply_to_db(conn, changes: list[dict]) -> int:
-    n_applied = 0
+def _guard(conn, sid: int) -> str:
+    row = conn.execute("select status, superseded_by from plan_session where id=%s",
+                       (sid,)).fetchone()
+    if row is None:
+        raise StaleProposal(f"la sessió {sid} no existeix")
+    status, superseded_by = row
+    if superseded_by is not None:
+        raise StaleProposal(f"la sessió {sid} ja té una versió posterior ({superseded_by})")
+    if status != "planned":
+        raise StaleProposal(f"la sessió {sid} ja no és pendent ({status})")
+    return status
+
+
+def _effect(conn, report_id: int, kind: str, session_id: int, new_session_id=None,
+            prev_status=None, prev_superseded_by=None, decision_id=None) -> dict:
+    conn.execute("""insert into coach_report_effect (report_id, kind, session_id,
+                    new_session_id, prev_status, prev_superseded_by, decision_id)
+                    values (%s, %s, %s, %s, %s, %s, %s)""",
+                 (report_id, kind, session_id, new_session_id, prev_status,
+                  prev_superseded_by, decision_id))
+    return {"report_id": report_id, "kind": kind, "session_id": session_id,
+            "new_session_id": new_session_id, "prev_status": prev_status,
+            "prev_superseded_by": prev_superseded_by}
+
+
+def _relink_children(conn, old_id: int, new_id: int) -> None:
+    conn.execute("""update plan_session set chained_after=%s
+                    where chained_after=%s and superseded_by is null""", (new_id, old_id))
+
+
+def apply_to_db(conn, report_id: int, changes: list[dict], decision_id=None) -> list[dict]:
+    """Aplica els canvis d'un informe al pla viu, dins la transacció del caller.
+
+    Cada mutació queda a coach_report_effect (per poder desfer-la) i cada fila
+    tocada ha de ser la viva i pendent: si no, StaleProposal i el caller fa
+    rollback. Res s'esborra mai: versionat amb superseded_by.
+    """
+    effects: list[dict] = []
+    inherited = ", ".join(INHERITED)
     for change in changes:
         action = change["action"]
         if action == "keep":
             continue
         sid = change["plan_session_id"]
+        prev_status = _guard(conn, sid)
         if action == "cancel":
-            conn.execute("update plan_session set status='cancelled' where id=%s",
-                         (sid,))
+            conn.execute("update plan_session set status='cancelled' where id=%s", (sid,))
+            effects.append(_effect(conn, report_id, "cancelled", sid,
+                                   prev_status=prev_status, decision_id=decision_id))
         elif action == "move":
-            new_id = conn.execute("""
-                insert into plan_session (goal_id, block_id, local_date, sport,
+            new_id = conn.execute(f"""
+                insert into plan_session ({inherited}, local_date, sport,
                     session_type, title, structure, duration_sec_target,
-                    distance_m_target, priority, rationale, is_test,
-                    rehearses_goal, is_goal_event, created_by, version)
-                select goal_id, block_id, %s, sport, session_type, title,
-                    structure, duration_sec_target, distance_m_target, priority,
-                    %s, is_test, rehearses_goal, is_goal_event, 'coach', version + 1
+                    distance_m_target, priority, rationale, created_by, version)
+                select {inherited}, %s, sport, session_type, title, structure,
+                    duration_sec_target, distance_m_target, priority, %s,
+                    'coach', version + 1
                 from plan_session where id = %s returning id""",
                 (change["new_date"], change["reason"], sid)).fetchone()[0]
+            _relink_children(conn, sid, new_id)
             conn.execute("""update plan_session set status='moved',
                             superseded_by=%s where id=%s""", (new_id, sid))
+            effects.append(_effect(conn, report_id, "created", sid, new_id,
+                                   decision_id=decision_id))
+            effects.append(_effect(conn, report_id, "moved", sid, new_id,
+                                   prev_status=prev_status, decision_id=decision_id))
         elif action in ("modify", "replace"):
             ns = change["new_session"]
-            new_id = conn.execute("""
-                insert into plan_session (goal_id, block_id, local_date, sport,
+            new_id = conn.execute(f"""
+                insert into plan_session ({inherited}, local_date, sport,
                     session_type, title, structure, duration_sec_target,
-                    priority, rationale, is_test, rehearses_goal, is_goal_event,
-                    created_by, version)
-                select goal_id, block_id, local_date, %s, %s, %s, %s, %s,
-                    coalesce(%s, priority), %s, is_test, rehearses_goal,
-                    is_goal_event, 'coach', version + 1
+                    distance_m_target, priority, rationale, created_by, version)
+                select {inherited}, local_date, %s, %s, %s, %s, %s,
+                    coalesce(%s, distance_m_target), coalesce(%s, priority), %s,
+                    'coach', version + 1
                 from plan_session where id = %s returning id""",
                 (ns["sport"], ns["session_type"], ns["title"],
                  json.dumps(ns["structure"]), ns.get("duration_sec_target"),
-                 ns.get("priority"), change["reason"], sid)).fetchone()[0]
+                 ns.get("distance_m_target"), ns.get("priority"),
+                 change["reason"], sid)).fetchone()[0]
+            _relink_children(conn, sid, new_id)
             conn.execute("update plan_session set superseded_by=%s where id=%s",
                          (new_id, sid))
-        n_applied += 1
-    return n_applied
+            effects.append(_effect(conn, report_id, "created", sid, new_id,
+                                   decision_id=decision_id))
+            effects.append(_effect(conn, report_id, "superseded", sid, new_id,
+                                   prev_status=prev_status, decision_id=decision_id))
+    return effects
 
 
-def write_report(conn, report_type: str, snapshot: dict, result: dict,
-                 today: date, dry_run: bool) -> None:
+SUMMARY_PREFIX = {
+    "none": "*(dry-run: canvis NO aplicats al pla)*",
+    "proposed": "*(proposta pendent: cap canvi fins que l'aprovis a l'app)*",
+    "auto_applied": "*(aplicat automàticament: canvis petits, es poden desfer des de l'app)*",
+    "applied": "*(aplicat)*",
+    "failed": "*(no aplicat: el pla havia canviat entre la proposta i l'aplicació)*",
+}
+
+
+def write_report(conn, report_type: str, snapshot: dict, result: dict, today: date,
+                 *, proposal_status: str, scope: str = "sessions",
+                 classification: dict | None = None) -> int:
+    """Desa l'informe i en retorna l'id (per lligar-hi efectes i decisions)."""
     output = result["output"]
     summary_md = f"## {output['summary']}\n\n{output['rationale']}"
     if output.get("questions_for_athlete"):
         summary_md += "\n\n**Preguntes:** " + " · ".join(output["questions_for_athlete"])
     if not result["accepted"]:
         summary_md = "## PROPOSTA DESCARTADA PEL VALIDADOR\n\n" + summary_md
-    elif dry_run:
-        summary_md = "*(dry-run: canvis NO aplicats al pla)*\n\n" + summary_md
+    elif proposal_status in SUMMARY_PREFIX:
+        summary_md = SUMMARY_PREFIX[proposal_status] + "\n\n" + summary_md
     window = (today, today + timedelta(days=3 if report_type == "daily" else 7))
-    conn.execute("""
+    return conn.execute("""
         insert into coach_report (report_type, window_start, window_end,
             input_snapshot, output, summary_md, model, input_tokens,
-            output_tokens, validation_errors)
-        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            output_tokens, validation_errors, proposal_status, scope, classification)
+        values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning id""",
         (report_type, window[0], window[1], json.dumps(snapshot),
          json.dumps(output), summary_md, result["usage"]["model"],
          result["usage"]["input_tokens"], result["usage"]["output_tokens"],
          json.dumps(result["validation_errors"] + [result["warnings"]])
-         if (result["validation_errors"] or result["warnings"]) else None))
+         if (result["validation_errors"] or result["warnings"]) else None,
+         proposal_status, scope,
+         json.dumps(classification, ensure_ascii=False)
+         if classification is not None else None)).fetchone()[0]
 
 
 def main() -> None:
@@ -256,28 +339,50 @@ def main() -> None:
         snapshot = build_context(conn, today, report_for=target)
         if args.tomorrow:
             snapshot["mode"] = "evening_preview"
-        plan, goal, history, athlete = plan_from_db(conn)
+        plan, goals, history, athlete = plan_from_db(conn)
+        mode = "dry_run" if args.dry_run else apply_mode(conn)
 
     result = coach_cycle(
         llm=CoachLLM(), system=load_prompt(f"{args.report_type}-v1"),
         context_json=json.dumps(snapshot, ensure_ascii=False),
-        plan=plan, athlete=athlete, history=history, goals=[goal],
+        plan=plan, athlete=athlete, history=history, goals=goals,
         today=today, report_type=args.report_type)
 
-    # Segona connexió curta per persistir.
+    # Auto o proposta? Es classifica sempre (també en dry_run: l'app ho ensenya
+    # com a "mode prova"), però només s'aplica en mode hybrid.
+    classification = None
+    proposal_status = "none"
+    if result["accepted"]:
+        active = {s.id: s for s in plan if s.status not in ("cancelled", "moved")}
+        classification = classify(result["output"]["session_changes"], active,
+                                  today, blocking=[]).to_dict()
+        if mode == "hybrid":
+            proposal_status = "auto_applied" if classification["auto"] else "proposed"
+
+    # Segona connexió curta per persistir: informe + canvis + efectes, tot o res.
     applied = 0
     with psycopg.connect(url) as conn:
-        if result["accepted"] and not args.dry_run:
+        try:
             with conn.transaction():
-                applied = apply_to_db(conn, result["output"]["session_changes"])
-        write_report(conn, args.report_type, snapshot, result, target, args.dry_run)
+                report_id = write_report(conn, args.report_type, snapshot, result, target,
+                                         proposal_status=proposal_status,
+                                         classification=classification)
+                if proposal_status == "auto_applied":
+                    applied = len(apply_to_db(conn, report_id,
+                                              result["output"]["session_changes"]))
+        except StaleProposal as e:
+            result["validation_errors"].append([f"no aplicat: {e}"])
+            with conn.transaction():
+                write_report(conn, args.report_type, snapshot, result, target,
+                             proposal_status="failed", classification=classification)
+            proposal_status = "failed"
 
     output = result["output"]
     status = "ACCEPTAT" if result["accepted"] else "DESCARTAT"
     print(f"[{status}] {args.report_type} · model {result['usage']['model']} · "
           f"{result['usage']['input_tokens']} in / {result['usage']['output_tokens']} out "
           f"· {len(result['validation_errors'])} tandes d'infraccions · "
-          f"{applied} canvis aplicats{' (dry-run)' if args.dry_run else ''}")
+          f"mode {mode} · {proposal_status} · {applied} efectes")
     print(f"\nSemàfor: {output['readiness']['verdict'].upper()} "
           f"({', '.join(output['readiness']['drivers']) or 'sense drivers'})")
     print(f"\n{output['summary']}\n\n{output['rationale']}")

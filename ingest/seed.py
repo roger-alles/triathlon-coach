@@ -10,7 +10,11 @@ actualitza en lloc de duplicar.
   logistics_task-> (goal_id, local_date, title)
 
 Ús:
-    .venv/bin/python -m ingest.seed [seeds/fornells-2026.yaml]
+    .venv/bin/python -m ingest.seed [seeds/fornells-2026.yaml] [--force]
+
+Quan el coach ja ha versionat el pla (files amb version > 1 o informes
+aplicats), el yaml deixa de ser la veritat: tornar a executar el seed
+sobreescriuria les versions del coach. Es nega, tret de --force.
 """
 
 import json
@@ -153,14 +157,31 @@ def upsert_logistics(conn, goal_id: int, t: dict) -> None:
                      key + (detail, bool(t.get("blocking"))))
 
 
+def coach_owns_plan(conn) -> bool:
+    """El coach ha escrit versions al pla viu (S1a): el seed ja no mana."""
+    versioned = conn.execute(
+        "select 1 from plan_session where version > 1 limit 1").fetchone()
+    applied = conn.execute("""select 1 from coach_report
+                              where proposal_status in ('applied', 'auto_applied')
+                              limit 1""").fetchone()
+    return bool(versioned or applied)
+
+
 def main() -> None:
-    seed_path = ROOT / (sys.argv[1] if len(sys.argv) > 1 else "seeds/fornells-2026.yaml")
+    args = [a for a in sys.argv[1:] if a != "--force"]
+    force = "--force" in sys.argv
+    seed_path = ROOT / (args[0] if args else "seeds/fornells-2026.yaml")
     data = yaml.safe_load(seed_path.read_text())
 
     load_dotenv(ROOT / ".env")
     url = os.getenv("DATABASE_URL")
     if not url:
         sys.exit("Falta DATABASE_URL al .env.")
+
+    with psycopg.connect(url) as conn:
+        if coach_owns_plan(conn) and not force:
+            sys.exit("El pla viu ja té versions del coach: el seed ja no és la veritat "
+                     "(docs/post-cursa-design.md). --force per sobreescriure-les.")
 
     extra_profile = {k: data[k] for k in
                      ("athlete_context", "race_day_protocol", "pacing_rules")

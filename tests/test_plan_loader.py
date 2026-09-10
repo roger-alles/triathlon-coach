@@ -51,3 +51,47 @@ def test_fornells_loads_expected_shape():
     assert goal.event_date == date(2026, 9, 27)
     assert sum(1 for s in plan if s.is_goal_event) == 1
     assert sum(1 for s in plan if s.chained) == 6
+
+
+# ─── plan_from_db: objectius com a llista, mai sys.exit ────────────────
+
+class _DbConn:
+    """Respon per fragment de SQL; prou per a plan_from_db."""
+
+    def __init__(self, goals):
+        self.goals = goals
+
+    def execute(self, sql, params=None):
+        s = " ".join(sql.split()).lower()
+        if "from goal" in s:
+            rows = self.goals
+        elif "from athlete" in s:
+            rows = [("Roger", 211, None, None, None)]
+        else:
+            rows = []
+        class R:
+            def fetchone(self_inner):
+                return rows[0] if rows else None
+            def fetchall(self_inner):
+                return rows
+            def __iter__(self_inner):
+                return iter(rows)
+        return R()
+
+
+def test_plan_from_db_returns_all_active_goals_as_a_list():
+    from coach.plan_loader import plan_from_db
+    conn = _DbConn([("Fornells", "triathlon", date(2026, 9, 27), "A", {}),
+                    ("Transpirinenca", "ultra_endurance", date(2027, 7, 15), "A", None)])
+    plan, goals, history, athlete = plan_from_db(conn)
+    assert [g.name for g in goals] == ["Fornells", "Transpirinenca"]
+    assert goals[1].profile == {}
+    assert athlete.name == "Roger"
+
+
+def test_plan_from_db_without_active_goal_does_not_exit():
+    # Després de la cursa Fornells passa a completed: el coach ha de seguir
+    # funcionant (bloc de recuperació) encara que no hi hagi cap objectiu actiu.
+    from coach.plan_loader import plan_from_db
+    plan, goals, history, athlete = plan_from_db(_DbConn([]))
+    assert goals == [] and plan == []

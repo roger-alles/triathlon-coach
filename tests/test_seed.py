@@ -96,3 +96,27 @@ def test_upsert_session_matches_by_date_and_sport_when_title_changes():
 
     update_sql = conn.calls[1][0]
     assert "title=%(title)s" in update_sql    # el títol nou es persisteix
+
+
+# ─── el seed deixa de ser la veritat quan el coach ha versionat el pla ──
+
+class _LiveConn:
+    def __init__(self, versioned, applied):
+        self.versioned, self.applied = versioned, applied
+
+    def execute(self, sql, params=None):
+        s = " ".join(sql.split()).lower()
+        if "version > 1" in s:
+            row = (1,) if self.versioned else None
+        elif "proposal_status" in s:
+            row = (1,) if self.applied else None
+        else:
+            row = None
+        return _FakeResult(row)
+
+
+def test_seed_guard_refuses_once_the_coach_owns_the_plan():
+    from ingest.seed import coach_owns_plan
+    assert coach_owns_plan(_LiveConn(versioned=True, applied=False))
+    assert coach_owns_plan(_LiveConn(versioned=False, applied=True))
+    assert not coach_owns_plan(_LiveConn(versioned=False, applied=False))
