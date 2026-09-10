@@ -28,6 +28,12 @@ export type PlanSession = {
   structure: { steps?: Step[]; segments?: Segment[] } | null;
   rationale: string | null;
   is_test: boolean;
+  priority: 'key' | 'support' | 'optional';
+};
+
+export type PlanBlock = {
+  phase: string;
+  name: string | null;
 };
 
 export function localDateISO(d: Date = new Date()): string {
@@ -81,6 +87,13 @@ export async function updateActivitySubjective(id: number, changes: SubjectiveUp
   if (error) throw new Error(error.message);
 }
 
+// 'YYYY-MM-DD' -> mitjanit local. new Date('YYYY-MM-DD') seria UTC i, a l'oest
+// de Greenwich, el dia abans.
+export function parseLocalISO(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 export function weekDaysISO(d: Date = new Date()): string[] {
   const monday = new Date(d);
   monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
@@ -98,7 +111,7 @@ export async function getSessionsForRange(
   const { data, error } = await supabase
     .from('plan_session')
     .select(
-      'id, local_date, sport, session_type, title, status, duration_sec_target, distance_m_target, structure, rationale, is_test'
+      'id, local_date, sport, session_type, title, status, duration_sec_target, distance_m_target, structure, rationale, is_test, priority'
     )
     .gte('local_date', startISO)
     .lte('local_date', endISO)
@@ -106,6 +119,20 @@ export async function getSessionsForRange(
     .order('local_date');
   if (error) throw new Error(error.message);
   return (data ?? []) as (PlanSession & { local_date: string })[];
+}
+
+// El bloc del pla que solapa el rang (els blocs són setmanes senceres).
+export async function getBlockForRange(startISO: string, endISO: string): Promise<PlanBlock | null> {
+  const { data, error } = await supabase
+    .from('plan_block')
+    .select('phase, name')
+    .lte('start_date', endISO)
+    .gte('end_date', startISO)
+    .order('start_date')
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data as PlanBlock | null;
 }
 
 export async function getActivitiesForRange(startISO: string, endISO: string): Promise<Activity[]> {
@@ -285,7 +312,7 @@ export async function getSessionsForDay(dateISO: string): Promise<PlanSession[]>
   const { data, error } = await supabase
     .from('plan_session')
     .select(
-      'id, sport, session_type, title, status, duration_sec_target, distance_m_target, structure, rationale, is_test'
+      'id, sport, session_type, title, status, duration_sec_target, distance_m_target, structure, rationale, is_test, priority'
     )
     .eq('local_date', dateISO)
     .is('superseded_by', null)

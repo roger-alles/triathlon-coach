@@ -180,8 +180,19 @@ const MONTHS = [
   'juliol', 'agost', 'setembre', 'octubre', 'novembre', 'desembre',
 ];
 
+function deMonth(monthIndex: number): string {
+  const month = MONTHS[monthIndex];
+  return (/^[aeiou]/.test(month) ? "d'" : 'de ') + month;
+}
+
 export function formatDateCa(d: Date): string {
-  const month = MONTHS[d.getMonth()];
-  const de = /^[aeiou]/.test(month) ? "d'" : 'de ';
-  return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${de}${month}`;
+  return `${WEEKDAYS[d.getDay()]} ${d.getDate()} ${deMonth(d.getMonth())}`;
+}
+
+// "24 – 30 d'agost" o, si canvia de mes, "28 de setembre – 4 d'octubre".
+export function formatWeekRangeCa(startISO: string, endISO: string): string {
+  const [, sm, sd] = startISO.split('-').map(Number);
+  const [, em, ed] = endISO.split('-').map(Number);
+  if (sm === em) return `${sd} – ${ed} ${deMonth(sm - 1)}`;
+  return `${sd} ${deMonth(sm - 1)} – ${ed} ${deMonth(em - 1)}`;
 }
