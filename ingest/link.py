@@ -93,6 +93,15 @@ def _multisport_status(session: dict, day_acts: list[dict], day_over: bool) -> s
     return "missed" if day_over else None
 
 
+def brick_run_link(session: dict, day_acts: list[dict], matched_ids: set[int]) -> int | None:
+    """La cursa curta d'un dia amb brick és el tram a peu del brick: s'hi lliga
+    (per a l'app i el detall) si cap sessió de cursa del dia no l'ha reclamat."""
+    runs = [a for a in day_acts if a["sport"] == "run" and a["id"] not in matched_ids]
+    if not runs or session["sport"] != "brick":
+        return None
+    return min(runs, key=lambda a: a.get("duration_sec") or 0)["id"]
+
+
 def session_status(session: dict, linked: list[dict], today: date) -> str | None:
     """Nou estat de la sessió, o None per deixar-la com està (dia en curs).
 
@@ -157,9 +166,16 @@ def run_linking(conn, today: date | None = None) -> dict:
             activity = next(a for a in day_acts if a["id"] == act_id)
             linked_by_session.setdefault(sess_id, []).append(activity)
             n_links += 1
+        matched_ids = {act_id for act_id, _ in match_day(day_sessions, day_acts)}
         for s in day_sessions:
             if s["sport"] in ("brick", "multisport"):
                 linked_by_session[s["id"]] = day_acts
+            if s["sport"] == "brick":
+                run_id = brick_run_link(s, day_acts, matched_ids)
+                if run_id is not None:
+                    conn.execute("update activity set plan_session_id = %s where id = %s",
+                                 (s["id"], run_id))
+                    n_links += 1
 
     changes = {"completed": 0, "partial": 0, "missed": 0}
     for s in sessions:

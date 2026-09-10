@@ -132,3 +132,15 @@ def test_status_is_idempotent_given_same_inputs():
     first = session_status(s, linked, TODAY)
     second = session_status(s, linked, TODAY)
     assert first == second == "completed"
+
+
+def test_brick_run_link_agafa_la_cursa_curta_no_aparellada():
+    from ingest.link import brick_run_link
+    brick = sess(10, "brick", 600)
+    acts = [act(1, "bike", 4432), act(2, "run", 827)]
+    # la bici ja va a la sessió de bici; la cursa curta és el tram a peu del brick
+    assert brick_run_link(brick, acts, matched_ids={1}) == 2
+    # si la cursa ja s'ha aparellat amb una sessió de cursa del dia, no es roba
+    assert brick_run_link(brick, acts, matched_ids={1, 2}) is None
+    # sense cursa, res
+    assert brick_run_link(brick, [act(1, "bike", 4432)], matched_ids=set()) is None
