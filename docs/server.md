@@ -32,6 +32,7 @@
 | Sync horari | `0 6-22 * * *` | `coach-job.sh sync`: sync complet perquè els entrenos surtin a l'app en menys d'una hora |
 | Vespre | `30 21 * * *` | `coach-job.sh evening`: sync + preview de demà |
 | Setmanal | `30 20 * * 0` | `coach-job.sh weekly`: sync + revisió setmanal |
+| Còpia BD | `50 4 * * *` | `backup-db.sh`: pg_dump comprimit, 14 dies |
 | Desplegament (crontab de root) | `50 5 * * *` | `git pull --ff-only` de `main` + `pip install` + `npm install` a `app/` + reinici del servei `expo-dev` |
 
 Cost amb Garmin un dia típic: ~25 intents buits × 1 petició + 1 sync del matí
@@ -39,6 +40,21 @@ Cost amb Garmin un dia típic: ~25 intents buits × 1 petició + 1 sync del mat�
 
 Tot el que es fusiona a `main` a GitHub és al servidor l'endemà a les 05:50.
 Per desplegar a l'acte: `ssh entrenador 'sudo -u entrenador -H git -C ~/entrenador-triatlo pull --ff-only && systemctl restart expo-dev'`.
+
+## Còpia de seguretat de la base de dades
+
+`scripts/backup-db.sh` (cron de `entrenador`, 04:50): `pg_dump` de l'esquema
+`public` comprimit a `/home/entrenador/backups/db-AAAAMMDD.sql.gz`, 14 dies de
+retenció (~1,5 MB cadascun). Log: `logs/backup.log`. Fins que el PR arribi a
+`main`, el cron té com a alternativa una còpia del script a `~/bin/`.
+
+Restaurar en un projecte Supabase buit (mai sobre el que té dades):
+
+```bash
+gunzip -c ~/backups/db-2026-09-10.sql.gz | psql "$DATABASE_URL_NOU"
+```
+
+Comprovació ràpida: `gunzip -c fitxer | grep -c "^COPY "` ha de donar 13 (taules).
 
 ## Operacions habituals
 
