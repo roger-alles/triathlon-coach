@@ -225,30 +225,6 @@ blocks:
         - {phase: main, distance_m: 800, target: {type: rpe, value: 6}, note: "continu, cronometrat, màxim 800"}
         - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
 
-  - date: 2026-09-02
-    sport: bike
-    session_type: race_pace
-    title: "Específica de cursa"
-    priority: key
-    duration_sec_target: 4500
-    structure:
-      steps:
-        - {phase: warmup, duration_sec: 1200, target: {type: rpe, value: 4}}
-        - {phase: main, repeats: 2, work: {duration_sec: 900, target: {type: rpe, value: 7, label: "esforç de cursa"}}, recovery: {duration_sec: 360, target: {type: rpe, value: 3}}}
-        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
-
-  - date: 2026-09-02
-    sport: brick
-    session_type: bike_run
-    title: "Brick"
-    priority: support
-    duration_sec_target: 600
-    parent_of_day: bike
-    structure:
-      steps:
-        - {phase: main, duration_sec: 240, target: {type: rpe, value: 7, label: "ritme de cursa"}}
-        - {phase: cooldown, duration_sec: 360, target: {type: rpe, value: 3}}
-
   - date: 2026-09-03
     sport: swim
     session_type: endurance
@@ -262,6 +238,31 @@ blocks:
         - {phase: main, repeats: 4, work: {distance_m: 200, target: {type: rpe, value: 6}}, recovery: {duration_sec: 30}}
         - {phase: main, repeats: 8, work: {distance_m: 50, target: {type: open}, note: "tècnica"}, recovery: {duration_sec: 20}}
         - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
+
+  - date: 2026-09-03
+    sport: bike
+    session_type: race_pace
+    title: "Específica de cursa"
+    rationale: "Feta el 03/09 en lloc del 02/09 (support: aquell dia la clau és la natació, R14) (registre corregit el 10/09: bici 83 min + brick 14 min aquell dia)."
+    priority: support
+    duration_sec_target: 4500
+    structure:
+      steps:
+        - {phase: warmup, duration_sec: 1200, target: {type: rpe, value: 4}}
+        - {phase: main, repeats: 2, work: {duration_sec: 900, target: {type: rpe, value: 7, label: "esforç de cursa"}}, recovery: {duration_sec: 360, target: {type: rpe, value: 3}}}
+        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
+
+  - date: 2026-09-03
+    sport: brick
+    session_type: bike_run
+    title: "Brick"
+    priority: support
+    duration_sec_target: 600
+    parent_of_day: bike
+    structure:
+      steps:
+        - {phase: main, duration_sec: 240, target: {type: rpe, value: 7, label: "ritme de cursa"}}
+        - {phase: cooldown, duration_sec: 360, target: {type: rpe, value: 3}}
 
   - date: 2026-09-04
     sport: run
@@ -408,12 +409,16 @@ blocks:
     rationale: >
       Mateixa hora que la prova, mateix esmorzar, mateix material. Res estrenat el dia 27.
       Aquí es descobreixen els problemes mentre encara es poden resoldre.
+      ASSAIG DE NUTRICIÓ (decisió 10/09; l'assaig previst a la bici llarga del 05/09 es va perdre):
+      esmorzar de cursa 3 h abans (pa blanc amb mel, plàtan, cafè: 90-100 g de carbohidrats,
+      res de fibra ni greix), un gel amb aigua 25 min abans de sortir, i a la bici un gel al
+      minut 30 i un altre al minut 60, un glop d'aigua cada 10 min. Apuntar com ha caigut.
     rehearses_goal: true                   # exempta de la regla R9
     structure:
       segments:
-        - {sport: swim, distance_m: 800, venue: open_water, target: {type: rpe, value: 7}}
+        - {sport: swim, distance_m: 800, venue: open_water, target: {type: rpe, value: 7}, note: "esmorzar de cursa 3 h abans; gel + aigua 25 min abans"}
         - {sport: transition, transition: t1, timed: true}
-        - {sport: bike, distance_m: 34000, target: {type: rpe, value: 7, label: "esforç de cursa"}}
+        - {sport: bike, distance_m: 34000, target: {type: rpe, value: 7, label: "esforç de cursa"}, note: "gel al min 30 i al min 60; un glop cada 10 min"}
         - {sport: transition, transition: t2, timed: true}
         - {sport: run, distance_m: 3000, target: {type: pace_sec_km, value: 250, label: "ritme objectiu"}}
 
@@ -503,12 +508,13 @@ blocks:
     session_type: intervals
     title: "Última sessió de qualitat"
     priority: key
-    duration_sec_target: 3300
-    distance_m_target: 12000
+    duration_sec_target: 3000
+    distance_m_target: 10000
+    rationale: "Rebaixada el 10/09 (de 4×1000 a 3:37 a 3×1000 a 3:45, ritme de 10 km): no s'ha fet cap sessió de qualitat a peu en tot el pla (29/08 substituïda, 04/09 perduda) i a 9 dies de la cursa no és moment d'estrenar-la a tope. Córrer és el punt fort a protegir."
     structure:
       steps:
         - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
-        - {phase: main, repeats: 4, work: {distance_m: 1000, target: {type: pace_sec_km, value: 217, tolerance: 3}}, recovery: {duration_sec: 90}}
+        - {phase: main, repeats: 3, work: {distance_m: 1000, target: {type: pace_sec_km, value: 225, tolerance: 3, label: "ritme de 10 km"}}, recovery: {duration_sec: 120}}
         - {phase: main, repeats: 4, work: {distance_m: 200, target: {type: rpe, value: 9}}, recovery: {duration_sec: 60}}
         - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
 

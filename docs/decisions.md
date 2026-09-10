@@ -2,6 +2,25 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-10 — Tres decisions de pla després de la revisió (aprovades per en Roger)
+
+1. **Simulacre del 12/09 = assaig de nutrició.** L'únic assaig previst (bici
+   llarga del 05/09) es va perdre. El simulacre incorpora l'esmorzar de cursa
+   3 h abans, gel + aigua 25 min abans de sortir, i gels als minuts 30 i 60 de
+   bici; notes als segments perquè surtin a l'app i al rellotge.
+2. **18/09 rebaixada**: de 4×1000 a 3:37/km a 3×1000 a 3:45 (ritme de 10 km),
+   recuperació 2'. No s'ha fet cap sessió de qualitat a peu en tot el pla
+   (29/08 substituïda, 04/09 perduda); estrenar-la a tope a 9 dies de la cursa
+   és risc sense benefici. Córrer és el punt fort a protegir.
+3. **Test de 1000 m del 20/09: NO** (decisió d'en Roger). Els 1000 m del
+   simulacre del 12/09 seran la segona referència; entrenar val més que un
+   altre test.
+
+Correcció de registre: la bici específica + brick del 02/09 es van fer el
+03/09 (bici 83', cursa 14'). Les sessions passen al 03/09 (`superseded_by`
+31→69, 32→70), la bici com a `support` perquè aquell dia la clau és la natació
+(R14). Validador OK (44 sessions).
+
 ## 2026-09-09 — El coach veu les marques (`test_results` al snapshot)
 
 `test_result` existia des de la F3 però cap codi la llegia: els tests eren
