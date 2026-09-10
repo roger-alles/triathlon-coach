@@ -2,6 +2,31 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-10 — S1a: aplicar amb seguretat (servidor), inert fins al 28/09
+
+Primer tall del disseny post-cursa, construït ABANS de la cursa perquè el
+dia 28 activar el coach real sigui canviar un valor, no programar. Tot queda
+inert: `app_setting.coach_apply_mode` neix a `dry_run` i `coach.run` el
+llegeix de la BD (el `--dry-run` del script del cron desapareix; el flag
+queda com a override). Què canvia per sota: (1) `apply_to_db` exigeix que
+cada sessió tocada sigui la viva i pendent (`StaleProposal` si no), copia
+TOTES les columnes a la versió nova (fins ara modify/move perdien
+`chained_after`, `test_spec`, `transition_practice` i `distance_m_target`:
+el brick perdia la bici pare, bug latent que el dry-run amagava) i re-enllaça
+els fills; (2) cada mutació queda a `coach_report_effect`: sense aquest
+rastre Desfés és impossible; (3) informe + canvis + efectes en una sola
+transacció; (4) `coach/classify.py` decideix per regla, no pel model, si un
+informe és auto o proposta, i el resultat es desa SEMPRE a
+`coach_report.classification` (també en dry_run: l'11-20/09 veurem com hauria
+classificat cada proposta real abans de donar-li la clau); (5)
+`coach/decisions.py` processa Aplica/Descarta/Desfés amb revalidació contra el
+pla viu; (6) un sol `flock` per a totes les feines del cron; (7) el setmanal
+té 64k tokens de sortida (streaming) i una resposta tallada és una tanda de
+correcció, no un crash sense informe; el context es marca per a la cache;
+(8) `plan_from_db` retorna tots els objectius actius i tolera que no n'hi
+hagi cap; (9) el seed es nega a córrer si el coach ja ha versionat el pla.
+Fora: `add`, prompts, `effort` del model, app (S1b).
+
 ## 2026-09-10 — Després de Fornells: planificació rodant, bústia i aprovació híbrida
 
 Disseny complet a `docs/post-cursa-design.md`. Decisions d'en Roger: (1) el coach

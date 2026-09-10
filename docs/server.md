@@ -20,7 +20,7 @@
 | Secrets (`.env`, mateix contingut que al Mac) | `/home/entrenador/entrenador-triatlo/.env` (600) |
 | Tokens de Garmin | `/home/entrenador/.garminconnect/garmin_tokens.json` (600) |
 | Entorn Python | `/home/entrenador/entrenador-triatlo/.venv` (Python 3.14) |
-| Logs de les feines | `/home/entrenador/entrenador-triatlo/logs/coach-{morning,sync,evening,weekly}.log` |
+| Logs de les feines | `/home/entrenador/entrenador-triatlo/logs/coach-{morning,sync,evening,weekly,decisions}.log` |
 | Log del desplegament diari | `.../logs/deploy.log` |
 | Programació | `crontab -l -u entrenador` |
 
@@ -32,13 +32,23 @@
 | Sync horari | `0 6-22 * * *` | `coach-job.sh sync`: sync complet perquè els entrenos surtin a l'app en menys d'una hora |
 | Vespre | `30 21 * * *` | `coach-job.sh evening`: sync + preview de demà |
 | Setmanal | `30 20 * * 0` | `coach-job.sh weekly`: sync + revisió setmanal |
+| Decisions | `*/5 6-23 * * *` | `coach-job.sh decisions`: aplica / descarta / desfà les propostes segons el que l'atleta ha tocat a l'app (`coach_decision`). Inert mentre `coach_apply_mode` sigui `dry_run` |
 | Còpia BD | `50 4 * * *` | `backup-db.sh`: pg_dump comprimit, 14 dies |
 | Desplegament (crontab de root) | `50 5 * * *` | `git pull --ff-only` de `main` + `pip install` + `npm install` a `app/` + reinici del servei `expo-dev` |
 
 Cost amb Garmin un dia típic: ~25 intents buits × 1 petició + 1 sync del matí
 + 17 syncs horaris × ~17 ≈ 330 peticions, repartides tot el dia.
 
+Totes les feines comparteixen un lock (`logs/coach.lock`, `flock`): `morning` i
+`sync` desisteixen si està ocupat, `evening`/`weekly` esperen fins a 10 min,
+`decisions` fins a 15 (perquè passin DESPRÉS del setmanal). El mode d'aplicació
+del coach (`dry_run` / `hybrid`) és a la BD, `app_setting.coach_apply_mode`, no
+al script: l'app el canvia. Fins al 28/09: `dry_run`.
+
 Tot el que es fusiona a `main` a GitHub és al servidor l'endemà a les 05:50.
+El desplegament NO aplica migracions: quan un PR en porta una, executar
+`make migrate` (des del Mac o del servidor, mateixa BD) ABANS que el codi nou
+arrenqui, i afegir a mà al crontab les línies noves de la taula de dalt.
 Per desplegar a l'acte: `ssh entrenador 'sudo -u entrenador -H git -C ~/entrenador-triatlo pull --ff-only && systemctl restart expo-dev'`.
 
 ## Còpia de seguretat de la base de dades
