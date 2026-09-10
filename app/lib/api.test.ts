@@ -39,6 +39,7 @@ test("l'últim informe daily es tradueix al que la pantalla necessita", async ()
   const row = {
     id: 7,
     created_at: '2026-08-29T07:23:51Z',
+    window_start: '2026-08-29',
     output: {
       summary: 'Rodatge suau en lloc de sèries.',
       rationale: 'El TSB ha caigut…',
@@ -48,7 +49,7 @@ test("l'últim informe daily es tradueix al que la pantalla necessita", async ()
   };
   mockFrom.mockReturnValue(chainResolving({ data: row, error: null }, 'maybeSingle'));
 
-  const report = await getLatestDailyReport();
+  const report = await getLatestDailyReport('2026-08-29');
   expect(mockFrom).toHaveBeenCalledWith('coach_report');
   expect(report).toEqual({
     id: 7,
@@ -57,12 +58,43 @@ test("l'últim informe daily es tradueix al que la pantalla necessita", async ()
     summary: 'Rodatge suau en lloc de sèries.',
     rationale: 'El TSB ha caigut…',
     questions: ['Com notes les cames?'],
+    windowStart: '2026-08-29',
+    kind: 'today',
   });
 });
 
 test('sense cap informe encara: null, no error', async () => {
   mockFrom.mockReturnValue(chainResolving({ data: null, error: null }, 'maybeSingle'));
-  expect(await getLatestDailyReport()).toBeNull();
+  expect(await getLatestDailyReport('2026-08-29')).toBeNull();
+});
+
+test("a partir de les 21:30 l'últim informe és el preview de demà, i es diu", async () => {
+  const chain = chainResolving(
+    { data: { id: 8, created_at: '2026-08-28T19:31:00Z', window_start: '2026-08-29', output: { summary: 'Demà rodatge.' } }, error: null },
+    'maybeSingle'
+  );
+  mockFrom.mockReturnValue(chain);
+  const report = await getLatestDailyReport('2026-08-28');
+  expect(report?.kind).toBe('preview_tomorrow');
+  expect(report?.windowStart).toBe('2026-08-29');
+});
+
+test("al matí, abans de l'informe del dia, el preview d'ahir parla d'avui", async () => {
+  const chain = chainResolving(
+    { data: { id: 8, created_at: '2026-08-28T19:31:00Z', window_start: '2026-08-29', output: {} }, error: null },
+    'maybeSingle'
+  );
+  mockFrom.mockReturnValue(chain);
+  expect((await getLatestDailyReport('2026-08-29'))?.kind).toBe('preview_today');
+});
+
+test("l'informe del matí (creat el mateix dia que descriu) és el d'avui", async () => {
+  const chain = chainResolving(
+    { data: { id: 9, created_at: '2026-08-29T06:20:00Z', window_start: '2026-08-29', output: {} }, error: null },
+    'maybeSingle'
+  );
+  mockFrom.mockReturnValue(chain);
+  expect((await getLatestDailyReport('2026-08-29'))?.kind).toBe('today');
 });
 
 test('les sessions del dia només inclouen la versió vigent (superseded_by null)', async () => {
@@ -186,7 +218,7 @@ test("les respostes ja donades d'un informe es poden recuperar", async () => {
 
 test('els errors de la BD no es traguen en silenci', async () => {
   mockFrom.mockReturnValue(chainResolving({ data: null, error: { message: 'permission denied' } }, 'maybeSingle'));
-  await expect(getLatestDailyReport()).rejects.toThrow('permission denied');
+  await expect(getLatestDailyReport('2026-08-29')).rejects.toThrow('permission denied');
 });
 
 test('marcar una tasca de logística com a feta: només la columna done', async () => {

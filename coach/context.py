@@ -18,6 +18,14 @@ RECOVERY_DAYS = 14
 PLAN_AHEAD_DAYS = 14
 COMPLIANCE_WEEKS = 3
 
+CATALAN_WEEKDAYS = ("dilluns", "dimarts", "dimecres", "dijous", "divendres",
+                    "dissabte", "diumenge")
+
+
+def weekday_name(d: date) -> str:
+    """Nom del dia en català, taula fixa — mai strftime (depèn del locale)."""
+    return CATALAN_WEEKDAYS[d.weekday()]
+
 
 def compact(value):
     """Elimina None, dicts buits i llistes buides, recursivament."""
@@ -169,12 +177,24 @@ def _past_compliance(conn, today: date) -> dict:
     return result
 
 
-def build_context(conn, today: date | None = None) -> dict:
-    """El snapshot complet que rep el model (spec §7, pas 1)."""
+def build_context(conn, today: date | None = None,
+                  report_for: date | None = None) -> dict:
+    """El snapshot complet que rep el model (spec §7, pas 1).
+
+    `today` és SEMPRE el dia real (ancora totes les finestres de dades).
+    `report_for` és el dia sobre el qual parla l'informe — per defecte, el
+    mateix `today` (informe del matí). Al preview del vespre, `report_for`
+    és demà i "mode" passa a "evening_preview"; `_plan_ahead` inclou igualment
+    des d'avui, perquè el vespre vegi la sessió d'avui i la de demà.
+    """
     today = today or date.today()
+    report_for = report_for or today
     context = {
         "today": today.isoformat(),
-        "weekday": today.strftime("%A"),
+        "weekday": weekday_name(today),
+        "report_for": report_for.isoformat(),
+        "report_for_weekday": weekday_name(report_for),
+        "mode": "morning" if report_for == today else "evening_preview",
         "athlete": _athlete(conn),
         "goals": _goals(conn, today),
         "current_block": _current_block(conn, today),

@@ -1,6 +1,6 @@
 // Capa de dades de l'app: consultes de lectura via supabase-js (passa RLS).
 
-import type { Step } from './format';
+import type { Segment, Step } from './format';
 import { supabase } from './supabase';
 
 export type DailyReport = {
@@ -10,6 +10,11 @@ export type DailyReport = {
   summary: string;
   rationale: string;
   questions: string[];
+  windowStart: string; // el dia de què parla l'informe
+  // 'today': informe del matí d'avui · 'preview_tomorrow': el del vespre, parla
+  // de demà · 'preview_today': el d'ahir al vespre, parla d'avui (encara no hi
+  // ha el del matí)
+  kind: 'today' | 'preview_tomorrow' | 'preview_today';
 };
 
 export type PlanSession = {
@@ -20,7 +25,7 @@ export type PlanSession = {
   status: string;
   duration_sec_target: number | null;
   distance_m_target: number | null;
-  structure: { steps: Step[] } | null;
+  structure: { steps?: Step[]; segments?: Segment[] } | null;
   rationale: string | null;
   is_test: boolean;
 };
@@ -184,10 +189,13 @@ export async function setLogisticsDone(id: number, done: boolean): Promise<void>
   if (error) throw new Error(error.message);
 }
 
-export async function getLatestDailyReport(): Promise<DailyReport | null> {
+// L'últim informe diari, etiquetat segons de quin dia parla respecte d'avui:
+// a partir de les 21:30 és el preview de demà (per preparar-lo i visualitzar-lo);
+// al matí, fins que arriba l'informe del dia, és el preview d'ahir per avui.
+export async function getLatestDailyReport(todayISO: string): Promise<DailyReport | null> {
   const { data, error } = await supabase
     .from('coach_report')
-    .select('id, created_at, output')
+    .select('id, created_at, window_start, output')
     .eq('report_type', 'daily')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -195,6 +203,12 @@ export async function getLatestDailyReport(): Promise<DailyReport | null> {
   if (error) throw new Error(error.message);
   if (!data) return null;
   const output = data.output as Record<string, any>;
+  const kind =
+    data.window_start > todayISO
+      ? 'preview_tomorrow'
+      : localDateISO(new Date(data.created_at)) < data.window_start
+        ? 'preview_today'
+        : 'today';
   return {
     id: data.id,
     createdAt: data.created_at,
@@ -202,6 +216,8 @@ export async function getLatestDailyReport(): Promise<DailyReport | null> {
     summary: output.summary ?? '',
     rationale: output.rationale ?? '',
     questions: output.questions_for_athlete ?? [],
+    windowStart: data.window_start,
+    kind,
   };
 }
 

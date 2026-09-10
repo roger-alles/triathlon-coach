@@ -1,13 +1,30 @@
 """Vinculació planificat <-> real (spec §9).
 
-Després de cada sync: cada activitat s'associa a la seva plan_session (mateix
-dia i esport; si hi ha més d'una candidata, la de durada més propera), i
-l'estat de la sessió es deriva del que s'ha fet:
+Després de cada sync: cada activitat normal (swim/bike/run/strength/other)
+s'associa a la seva plan_session (mateix dia i esport; si hi ha més d'una
+candidata, la de durada més propera), i l'estat de la sessió es deriva del
+que s'ha fet:
 
-  completed  real >= 80% del planificat (planned_load si n'hi ha; si no, durada)
+  completed  real >= 80% del planificat (planned_load si n'hi ha; si no,
+             duration_sec_target; si no n'hi ha, distance_m_target; si no hi
+             ha cap target, es dona per completed amb qualsevol activitat)
   partial    hi ha activitat però < 80%
   missed     el dia s'ha acabat sense cap activitat
   (les sessions de descans es completen soles quan passa el dia)
+
+El rellotge mai registra l'esport 'brick': un brick real arriba com una
+activitat 'bike' + una activitat 'run' el mateix dia. Les sessions 'brick' i
+'multisport' (sport que no existeix a `activity`) no encaixen mai per
+`match_day` — es resolen per composició d'esports del dia sencer, sense
+escriure `activity.plan_session_id` (ja apunten a la sessió de bici/cursa del
+dia, si n'hi ha):
+
+  brick       cal bike + run el mateix dia; estat per la durada del run més
+              curt (el tram a peu del brick) contra duration_sec_target.
+              Només bike o només run -> partial (no missed) un cop passat el dia.
+  multisport  cal >=2 esports diferents entre swim/bike/run el mateix dia;
+              estat per la suma de durades d'aquests esports. Un sol esport
+              -> partial un cop passat el dia.
 
 Només es toquen estats gestionats per aquest procés (planned/completed/
 partial/missed): 'moved' i 'cancelled' són decisions del coach o de l'atleta
@@ -45,19 +62,72 @@ def match_day(sessions: list[dict], activities: list[dict]) -> list[tuple[int, i
     return links
 
 
+def _brick_status(session: dict, day_acts: list[dict], day_over: bool) -> str | None:
+    """Estat d'una sessió 'brick': cal bike + run el mateix dia."""
+    bikes = [a for a in day_acts if a["sport"] == "bike"]
+    runs = [a for a in day_acts if a["sport"] == "run"]
+    if bikes and runs:
+        target = session.get("duration_sec_target")
+        if not target:
+            return "completed"
+        shortest_run = min(runs, key=lambda a: a.get("duration_sec") or 0)
+        real = shortest_run.get("duration_sec") or 0
+        return "completed" if real >= COMPLETED_RATIO * target else "partial"
+    if bikes or runs:
+        return "partial" if day_over else None
+    return "missed" if day_over else None
+
+
+def _multisport_status(session: dict, day_acts: list[dict], day_over: bool) -> str | None:
+    """Estat d'una sessió 'multisport': cal >=2 esports (swim/bike/run) el mateix dia."""
+    tri_acts = [a for a in day_acts if a["sport"] in ("swim", "bike", "run")]
+    sports = {a["sport"] for a in tri_acts}
+    if len(sports) >= 2:
+        target = session.get("duration_sec_target")
+        if not target:
+            return "completed"
+        real = sum(a.get("duration_sec") or 0 for a in tri_acts)
+        return "completed" if real >= COMPLETED_RATIO * target else "partial"
+    if sports:
+        return "partial" if day_over else None
+    return "missed" if day_over else None
+
+
+def brick_run_link(session: dict, day_acts: list[dict], matched_ids: set[int]) -> int | None:
+    """La cursa curta d'un dia amb brick és el tram a peu del brick: s'hi lliga
+    (per a l'app i el detall) si cap sessió de cursa del dia no l'ha reclamat."""
+    runs = [a for a in day_acts if a["sport"] == "run" and a["id"] not in matched_ids]
+    if not runs or session["sport"] != "brick":
+        return None
+    return min(runs, key=lambda a: a.get("duration_sec") or 0)["id"]
+
+
 def session_status(session: dict, linked: list[dict], today: date) -> str | None:
-    """Nou estat de la sessió, o None per deixar-la com està (dia en curs)."""
+    """Nou estat de la sessió, o None per deixar-la com està (dia en curs).
+
+    `linked` és, per a sessions normals i 'rest', les activitats ja
+    aparellades per `match_day`; per a 'brick' i 'multisport', totes les
+    activitats del dia sense filtrar (la vinculació és per composició
+    d'esports, no 1-a-1).
+    """
     day_over = session["local_date"] < today
     if session["sport"] == "rest":
         return "completed" if day_over else None
+    if session["sport"] == "brick":
+        return _brick_status(session, linked, day_over)
+    if session["sport"] == "multisport":
+        return _multisport_status(session, linked, day_over)
     if linked:
         if session.get("planned_load"):
             target = float(session["planned_load"])
             real = sum(float(a.get("load") or 0) for a in linked)
-        else:
-            target = session.get("duration_sec_target") or 0
+        elif session.get("duration_sec_target"):
+            target = session["duration_sec_target"]
             real = sum(a.get("duration_sec") or 0 for a in linked)
-        if not target:
+        elif session.get("distance_m_target"):
+            target = float(session["distance_m_target"])
+            real = sum(float(a.get("distance_m") or 0) for a in linked)
+        else:
             return "completed"
         return "completed" if real >= COMPLETED_RATIO * target else "partial"
     return "missed" if day_over else None
@@ -66,16 +136,18 @@ def session_status(session: dict, linked: list[dict], today: date) -> str | None
 def run_linking(conn, today: date | None = None) -> dict:
     today = today or date.today()
     sessions = [dict(zip(("id", "local_date", "sport", "duration_sec_target",
-                          "planned_load", "status"), r))
+                          "distance_m_target", "planned_load", "status"), r))
                 for r in conn.execute("""
                     select id, local_date, sport, duration_sec_target,
-                           planned_load, status
+                           distance_m_target, planned_load, status
                     from plan_session
                     where superseded_by is null and status = any(%s)""",
                     (list(MANAGED_STATUSES),))]
-    activities = [dict(zip(("id", "local_date", "sport", "duration_sec", "load"), r))
+    activities = [dict(zip(("id", "local_date", "sport", "duration_sec",
+                            "distance_m", "load"), r))
                   for r in conn.execute("""
-                    select id, local_date, sport, duration_sec, load from activity""")]
+                    select id, local_date, sport, duration_sec, distance_m, load
+                    from activity""")]
 
     by_day_sessions: dict[date, list[dict]] = {}
     for s in sessions:
@@ -94,6 +166,16 @@ def run_linking(conn, today: date | None = None) -> dict:
             activity = next(a for a in day_acts if a["id"] == act_id)
             linked_by_session.setdefault(sess_id, []).append(activity)
             n_links += 1
+        matched_ids = {act_id for act_id, _ in match_day(day_sessions, day_acts)}
+        for s in day_sessions:
+            if s["sport"] in ("brick", "multisport"):
+                linked_by_session[s["id"]] = day_acts
+            if s["sport"] == "brick":
+                run_id = brick_run_link(s, day_acts, matched_ids)
+                if run_id is not None:
+                    conn.execute("update activity set plan_session_id = %s where id = %s",
+                                 (s["id"], run_id))
+                    n_links += 1
 
     changes = {"completed": 0, "partial": 0, "missed": 0}
     for s in sessions:
