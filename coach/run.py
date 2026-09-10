@@ -14,6 +14,15 @@
 --dry-run fa el cicle sencer (amb crida real a l'API) però no escriu res al
 pla; desa igualment el coach_report marcant-ho al summary. És el mode d'ús
 fins a la cursa del 27S: la spec mana no tocar el pla de Fornells.
+
+--tomorrow és el preview del vespre: build_context() rep sempre el dia real
+com a `today` i, a més, `report_for=demà` — el snapshot porta totes dues
+dates (i "mode": "evening_preview") en lloc de fingir que avui és demà.
+S'ha triat un únic prompt (coach/prompts/daily-v1.md) que explica tots dos
+camps i com parlar-ne segons el mode, en lloc de duplicar-lo en un fitxer
+evening-v1.md: el contingut (regles de periodització, to, format) és el
+mateix; només canvia de quin dia es parla i en quin temps verbal.
+`report_type='daily'` es manté a la BD en tots dos casos.
 """
 
 import argparse
@@ -244,7 +253,7 @@ def main() -> None:
     # ocioses: mantenir-ne una oberta durant la crida al model (1-3 min) va
     # perdre dos informes ja generats el 30-31/08.
     with psycopg.connect(url) as conn:
-        snapshot = build_context(conn, target)
+        snapshot = build_context(conn, today, report_for=target)
         if args.tomorrow:
             snapshot["mode"] = "evening_preview"
         plan, goal, history, athlete = plan_from_db(conn)

@@ -160,7 +160,8 @@ def test_main_holds_no_db_connection_while_the_model_thinks(monkeypatch):
 
     written = []
     monkeypatch.setattr(run.psycopg, "connect", fake_connect)
-    monkeypatch.setattr(run, "build_context", lambda conn, target: {"today": str(target)})
+    monkeypatch.setattr(run, "build_context",
+                        lambda conn, today, report_for=None: {"today": str(today)})
     monkeypatch.setattr(run, "plan_from_db", lambda conn: ([], None, None, None))
     monkeypatch.setattr(run, "coach_cycle", fake_cycle)
     monkeypatch.setattr(run, "CoachLLM", lambda: None)

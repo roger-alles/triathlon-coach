@@ -34,15 +34,32 @@ class _Cur:
     def fetchall(self):
         return self._rows
 
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def __iter__(self):
+        return iter(self._rows)
+
 
 class _Conn:
-    def __init__(self, cols, rows):
+    """Connexió falsa. Amb `cols`/`rows` totes les consultes retornen el
+    mateix (comportament original); amb `by_table` (dict substring_sql ->
+    (cols, rows)) cada consulta que conté aquella substring retorna les
+    seves pròpies files, i la resta retornen buit per defecte — necessari
+    per cridar build_context() de veritat, que fa moltes consultes diferents."""
+    def __init__(self, cols=None, rows=None, by_table=None):
         self.sql = None
-        self._cur = _Cur(cols, rows)
+        self.queries = []
+        self._default = _Cur(cols or [], rows or [])
+        self._by_table = by_table or {}
 
     def execute(self, sql, params=None):
         self.sql = sql
-        return self._cur
+        self.queries.append(sql)
+        for key, (cols, rows) in self._by_table.items():
+            if key in sql:
+                return _Cur(cols, rows)
+        return self._default
 
 
 def test_recent_answers_reads_the_athlete_answer_table():
@@ -60,12 +77,58 @@ def test_recent_answers_reads_the_athlete_answer_table():
     assert "athlete_answer" in conn.sql
 
 
-def test_build_context_includes_athlete_answers_key():
-    import inspect
-    from coach import context
+ATHLETE_COLS = ("name", "birth_date", "max_hr", "resting_hr_baseline",
+                "ftp_watts", "css_sec_per_100m", "threshold_pace_sec_km")
+ATHLETE_ROW = ("Roger", date(2005, 12, 13), 211, 50, None, None, None)
 
-    src = inspect.getsource(context.build_context)
-    assert "athlete_answers_last_7d" in src
+
+def _full_conn(**extra_by_table):
+    by_table = {"from athlete where": (ATHLETE_COLS, [ATHLETE_ROW])}
+    by_table.update(extra_by_table)
+    return _Conn(by_table=by_table)
+
+
+def test_build_context_includes_athlete_answers_key():
+    from datetime import datetime
+    from coach.context import build_context
+
+    conn = _full_conn(**{"from athlete_answer": (
+        ["created_at", "question", "answer"],
+        [(datetime(2026, 9, 6, 21, 0), "Com notes les cames?", "Bé.")])})
+    snapshot = build_context(conn, date(2026, 9, 7))
+    assert snapshot["athlete_answers_last_7d"] == [
+        {"created_at": "2026-09-06T21:00:00",
+         "question": "Com notes les cames?", "answer": "Bé."}]
+    assert snapshot["athlete"]["name"] == "Roger"
+
+
+def test_build_context_today_is_always_real_even_with_report_for():
+    from coach.context import build_context
+
+    today = date(2026, 9, 7)  # dilluns
+    tomorrow = date(2026, 9, 8)  # dimarts
+    snapshot = build_context(_full_conn(), today, report_for=tomorrow)
+    assert snapshot["today"] == "2026-09-07"
+    assert snapshot["weekday"] == "dilluns"
+    assert snapshot["report_for"] == "2026-09-08"
+    assert snapshot["report_for_weekday"] == "dimarts"
+    assert snapshot["mode"] == "evening_preview"
+
+
+def test_build_context_defaults_report_for_to_today_in_morning_mode():
+    from coach.context import build_context
+
+    today = date(2026, 9, 7)
+    snapshot = build_context(_full_conn(), today)
+    assert snapshot["today"] == snapshot["report_for"] == "2026-09-07"
+    assert snapshot["mode"] == "morning"
+
+
+def test_weekday_name_catalan_sunday_and_monday():
+    from coach.context import weekday_name
+
+    assert weekday_name(date(2026, 9, 6)) == "diumenge"
+    assert weekday_name(date(2026, 9, 7)) == "dilluns"
 
 
 def test_test_results_arriba_al_snapshot_com_a_marques():
