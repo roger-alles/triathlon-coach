@@ -6,7 +6,7 @@ CLI (valida el pla actiu de la base de dades):
 
 import os
 import sys
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import yaml
@@ -48,14 +48,18 @@ def plan_from_yaml(path: Path) -> tuple[list[Session], Goal]:
     return plan, goal
 
 
-def plan_from_db(conn) -> tuple[list[Session], Goal, History, Athlete]:
-    """El pla viu de la DB + context (historial real, atleta) per validar-lo."""
-    g = conn.execute("""select name, discipline, event_date, priority, profile
-                        from goal where status='active' order by event_date limit 1""").fetchone()
-    if not g:
-        sys.exit("Cap objectiu actiu a la base de dades.")
-    goal = Goal(name=g[0], discipline=g[1], event_date=g[2], priority=g[3],
-                profile=g[4] or {})
+def plan_from_db(conn) -> tuple[list[Session], list[Goal], History, Athlete]:
+    """El pla viu de la DB + context (historial real, atleta) per validar-lo.
+
+    Tots els objectius actius, per prioritat i data. Pot ser una llista buida
+    (després d'una cursa, abans del següent objectiu): el coach ha de seguir
+    funcionant sobre el bloc de recuperació.
+    """
+    goals = [Goal(name=g[0], discipline=g[1], event_date=g[2], priority=g[3],
+                  profile=g[4] or {})
+             for g in conn.execute("""select name, discipline, event_date, priority, profile
+                                      from goal where status='active'
+                                      order by priority, event_date""")]
 
     blocks = {r[0]: Block(id=r[0], phase=r[1], start_date=r[2], end_date=r[3],
                           target_weekly_hours=float(r[4]) if r[4] else None,
@@ -74,7 +78,7 @@ def plan_from_db(conn) -> tuple[list[Session], Goal, History, Athlete]:
                                      is_goal_event, chained_after, id
                                      from plan_session where superseded_by is null""")]
 
-    plan_start = min(s.local_date for s in plan)
+    plan_start = min((s.local_date for s in plan), default=date.today())
     weekly = {}
     for r in conn.execute("""
             select date_trunc('week', local_date)::date, sum(duration_sec)/3600.0
@@ -90,7 +94,7 @@ def plan_from_db(conn) -> tuple[list[Session], Goal, History, Athlete]:
     athlete = Athlete(name=a[0], max_hr=a[1], ftp_watts=a[2],
                       css_sec_per_100m=float(a[3]) if a[3] else None,
                       threshold_pace_sec_km=float(a[4]) if a[4] else None)
-    return plan, goal, History(weekly_hours=weekly, daily_metrics=metrics), athlete
+    return plan, goals, History(weekly_hours=weekly, daily_metrics=metrics), athlete
 
 
 def main() -> None:
@@ -102,11 +106,15 @@ def main() -> None:
     if not url:
         sys.exit("Falta DATABASE_URL al .env.")
     with psycopg.connect(url) as conn:
-        plan, goal, history, athlete = plan_from_db(conn)
+        plan, goals, history, athlete = plan_from_db(conn)
 
+    if not plan:
+        print("cap sessió viva al pla: res a validar")
+        return
     reference = min(s.local_date for s in plan)
-    violations = validate_plan(plan, athlete, history, [goal], reference_date=reference)
-    print(f"pla '{goal.name}': {len(plan)} sessions validades (referència {reference})")
+    violations = validate_plan(plan, athlete, history, goals, reference_date=reference)
+    names = ", ".join(g.name for g in goals) or "sense objectiu actiu"
+    print(f"pla '{names}': {len(plan)} sessions validades (referència {reference})")
     if not violations:
         print("CAP VIOLACIÓ: el pla passa les 14 regles.")
         return

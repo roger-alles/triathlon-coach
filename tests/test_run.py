@@ -8,13 +8,17 @@ corregeix, es descarta.
 
 import json
 import sys
+
+import pytest
 from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from coach.models import Athlete, Block, History, Session
-from coach.run import MAX_ATTEMPTS, apply_changes, coach_cycle, semantic_errors
+from coach.llm import OutputCutOff
+from coach.run import (MAX_ATTEMPTS, StaleProposal, apply_changes, apply_to_db,
+                       coach_cycle, semantic_errors, write_report)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "coach"
 ATHLETE = Athlete(name="Roger", max_hr=211)
@@ -49,7 +53,7 @@ class FakeLLM:
         self.outputs = list(outputs)
         self.calls = 0
 
-    def generate(self, system, messages):
+    def generate(self, system, messages, report_type="daily"):
         self.calls += 1
         return self.outputs.pop(0), {"model": "fake", "input_tokens": 100,
                                      "output_tokens": 50}
@@ -162,11 +166,12 @@ def test_main_holds_no_db_connection_while_the_model_thinks(monkeypatch):
     monkeypatch.setattr(run.psycopg, "connect", fake_connect)
     monkeypatch.setattr(run, "build_context",
                         lambda conn, today, report_for=None: {"today": str(today)})
-    monkeypatch.setattr(run, "plan_from_db", lambda conn: ([], None, None, None))
+    monkeypatch.setattr(run, "plan_from_db", lambda conn: ([], [], None, None))
     monkeypatch.setattr(run, "coach_cycle", fake_cycle)
     monkeypatch.setattr(run, "CoachLLM", lambda: None)
     monkeypatch.setattr(run, "load_prompt", lambda name: "prompt")
-    monkeypatch.setattr(run, "write_report", lambda *a: written.append(a))
+    monkeypatch.setattr(run, "apply_mode", lambda conn: "dry_run")
+    monkeypatch.setattr(run, "write_report", lambda *a, **kw: written.append((a, kw)) or 1)
     monkeypatch.setenv("DATABASE_URL", "postgres://x")
     monkeypatch.setattr(sys, "argv", ["run.py", "daily", "--dry-run"])
 
@@ -174,3 +179,157 @@ def test_main_holds_no_db_connection_while_the_model_thinks(monkeypatch):
 
     assert len(connect_calls) == 2   # una per llegir, una per escriure
     assert len(written) == 1         # l'informe s'ha persistit
+
+
+# ─── el model es queda sense tokens: una tanda més, no un crash ──────
+
+class CutOffThenValid:
+    def __init__(self):
+        self.calls = 0
+
+    def generate(self, system, messages, report_type="daily"):
+        self.calls += 1
+        if self.calls == 1:
+            raise OutputCutOff("tallada")
+        return fixture("valid_daily"), {"model": "fake", "input_tokens": 1, "output_tokens": 1}
+
+
+def test_cut_off_output_becomes_feedback_not_a_crash():
+    llm = CutOffThenValid()
+    result = coach_cycle(llm=llm, system="s", context_json="{}", plan=make_plan(),
+                         athlete=ATHLETE, history=History(), goals=[], today=MON,
+                         report_type="daily")
+    assert result["accepted"] and llm.calls == 2
+    assert any("tallada" in e for e in result["validation_errors"][0])
+
+
+# ─── apply_to_db: guardes, columnes senceres, bricks, efectes ────────
+
+class DbConn:
+    """Conn falsa: estat de les sessions per id, ids nous creixents, SQL registrat."""
+
+    def __init__(self, sessions):
+        self.sessions = dict(sessions)   # id -> (status, superseded_by)
+        self.calls = []
+        self.next_id = 100
+
+    def transaction(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        self.calls.append((" ".join(sql.split()), params))
+        s = self.calls[-1][0].lower()
+        row = None
+        if s.startswith("select status, superseded_by"):
+            row = self.sessions.get(params[0])
+        elif s.startswith("insert into plan_session"):
+            self.next_id += 1
+            row = (self.next_id,)
+        elif s.startswith("insert into coach_report ("):
+            row = (7,)
+        class R:
+            def fetchone(self_inner):
+                return row
+        return R()
+
+    def sql(self, needle):
+        return [c for c in self.calls if needle in c[0].lower()]
+
+
+def test_apply_cancel_records_previous_status():
+    conn = DbConn({2: ("planned", None)})
+    effects = apply_to_db(conn, 7, [{"plan_session_id": 2, "action": "cancel", "reason": "x"}])
+    assert conn.sql("set status='cancelled'")[0][1] == (2,)
+    assert effects == [{"report_id": 7, "kind": "cancelled", "session_id": 2,
+                        "new_session_id": None, "prev_status": "planned",
+                        "prev_superseded_by": None}]
+    inserted = conn.sql("insert into coach_report_effect")
+    assert len(inserted) == 1 and inserted[0][1][:3] == (7, "cancelled", 2)
+
+
+def test_apply_move_copies_every_column_relinks_children_and_records_effects():
+    conn = DbConn({3: ("planned", None)})
+    effects = apply_to_db(conn, 7, [{"plan_session_id": 3, "action": "move",
+                                     "new_date": "2026-10-09", "reason": "pluja"}])
+    insert = conn.sql("insert into plan_session")[0][0]
+    for col in ("chained_after", "test_spec", "transition_practice", "distance_m_target"):
+        assert col in insert, col
+    # el brick que penjava de la sessió vella ara penja de la nova
+    relink = conn.sql("set chained_after=")[0]
+    assert relink[1] == (101, 3)
+    assert conn.sql("set status='moved'")[0][1] == (101, 3)
+    kinds = [(e["kind"], e["session_id"], e["new_session_id"]) for e in effects]
+    assert kinds == [("created", 3, 101), ("moved", 3, 101)]
+    assert effects[1]["prev_status"] == "planned"
+
+
+def test_apply_modify_keeps_distance_and_supersedes():
+    conn = DbConn({4: ("planned", None)})
+    ns = {"sport": "bike", "session_type": "recovery", "title": "Suau",
+          "structure": {"steps": []}, "duration_sec_target": 1800}
+    effects = apply_to_db(conn, 7, [{"plan_session_id": 4, "action": "modify",
+                                     "reason": "x", "new_session": ns}])
+    insert = conn.sql("insert into plan_session")[0][0]
+    assert "chained_after" in insert and "distance_m_target" in insert
+    assert conn.sql("set superseded_by=")[0][1] == (101, 4)
+    assert [e["kind"] for e in effects] == ["created", "superseded"]
+
+
+def test_apply_refuses_stale_or_non_planned_sessions():
+    with pytest.raises(StaleProposal):
+        apply_to_db(DbConn({5: ("planned", 77)}), 7,
+                    [{"plan_session_id": 5, "action": "cancel", "reason": "x"}])
+    with pytest.raises(StaleProposal):
+        apply_to_db(DbConn({5: ("completed", None)}), 7,
+                    [{"plan_session_id": 5, "action": "cancel", "reason": "x"}])
+    conn = DbConn({})
+    with pytest.raises(StaleProposal):
+        apply_to_db(conn, 7, [{"plan_session_id": 9, "action": "cancel", "reason": "x"}])
+    assert not conn.sql("update")   # res tocat
+
+
+def test_keep_touches_nothing():
+    conn = DbConn({2: ("planned", None)})
+    assert apply_to_db(conn, 7, [{"plan_session_id": 2, "action": "keep", "reason": ""}]) == []
+    assert not conn.sql("update") and not conn.sql("insert")
+
+
+# ─── write_report: retorna id, estat de proposta i classificació ─────
+
+def _result():
+    return {"accepted": True, "usage": {"model": "m", "input_tokens": 1, "output_tokens": 1},
+            "validation_errors": [], "warnings": [],
+            "output": {"summary": "S", "rationale": "R", "session_changes": [],
+                       "questions_for_athlete": []}}
+
+
+def test_write_report_returns_id_and_persists_proposal_state():
+    conn = DbConn({})
+    rid = write_report(conn, "daily", {"today": "x"}, _result(), MON,
+                       proposal_status="proposed", scope="sessions",
+                       classification={"auto": False, "reasons": ["horitzó"]})
+    assert rid == 7
+    sql, params = conn.sql("insert into coach_report (")[0]
+    assert "proposal_status" in sql and "classification" in sql
+    assert "proposed" in params
+    assert any(isinstance(p, str) and "horitzó" in p for p in params)
+
+
+def test_write_report_summary_prefix_follows_the_state():
+    def summary(status):
+        conn = DbConn({})
+        write_report(conn, "daily", {}, _result(), MON, proposal_status=status,
+                     scope="sessions", classification=None)
+        return next(p for p in conn.sql("insert into coach_report (")[0][1]
+                    if isinstance(p, str) and p.startswith("*(") or
+                    (isinstance(p, str) and p.startswith("## ")))
+    assert summary("none").startswith("*(dry-run")
+    assert summary("proposed").startswith("*(proposta")
+    assert summary("auto_applied").startswith("*(aplicat")
+    assert summary("failed").startswith("*(no aplicat")
