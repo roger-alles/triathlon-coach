@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import LogSession from '@/components/log-session';
 import { ThemedText } from '@/components/themed-text';
 
 import {
@@ -102,6 +103,7 @@ export default function Avui() {
               {formatStep(step)}
             </ThemedText>
           ))}
+          <LogSession session={s} dateISO={localDateISO()} />
         </View>
       ))}
 

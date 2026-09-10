@@ -1,7 +1,7 @@
 jest.mock('./supabase', () => ({ supabase: { from: jest.fn() } }));
 
 import { supabase } from './supabase';
-import { getLatestDailyReport, getSessionsForDay, localDateISO } from './api';
+import { getLatestDailyReport, getSessionsForDay, localDateISO, logManualActivity } from './api';
 
 const mockFrom = supabase.from as jest.Mock;
 
@@ -187,4 +187,48 @@ test("les respostes ja donades d'un informe es poden recuperar", async () => {
 test('els errors de la BD no es traguen en silenci', async () => {
   mockFrom.mockReturnValue(chainResolving({ data: null, error: { message: 'permission denied' } }, 'maybeSingle'));
   await expect(getLatestDailyReport()).rejects.toThrow('permission denied');
+});
+
+test("registrar una sessió sense rellotge: fila manual amb id negatiu, mai una fila de Garmin", async () => {
+  const chain = chainResolving({ data: null, error: null });
+  chain.insert = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  const now = new Date(2026, 8, 10, 18, 42);
+  await logManualActivity(
+    {
+      local_date: '2026-09-10',
+      sport: 'swim',
+      sub_sport: 'lap_swimming',
+      duration_sec: 2400,
+      distance_m: 1600,
+      perceived_effort: 6,
+      athlete_notes: '3×400 a 2:16',
+      plan_session_id: 43,
+    },
+    now
+  );
+  expect(mockFrom).toHaveBeenCalledWith('activity');
+  const row = chain.insert.mock.calls[0][0];
+  expect(row.id).toBe(-202609101842);
+  expect(row.id).toBeLessThan(0);
+  expect(row.local_date).toBe('2026-09-10');
+  expect(row.sport).toBe('swim');
+  expect(row.sub_sport).toBe('lap_swimming');
+  expect(row.duration_sec).toBe(2400);
+  expect(row.distance_m).toBe(1600);
+  expect(row.perceived_effort).toBe(6);
+  expect(row.plan_session_id).toBe(43);
+  expect(row.load_estimated).toBe(true);
+  expect(row.raw).toEqual({ manual: true, source: 'app', plan_session_id: 43 });
+  // l'activitat ha acabat ara: comença durada enrere
+  expect(new Date(row.start_time).getTime()).toBe(now.getTime() - 2400 * 1000);
+});
+
+test('registrar una sessió: els errors de la BD pugen', async () => {
+  const chain = chainResolving({ data: null, error: { message: 'new row violates row-level security policy' } });
+  chain.insert = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  await expect(
+    logManualActivity({ local_date: '2026-09-10', sport: 'run', duration_sec: 600 })
+  ).rejects.toThrow('row-level security');
 });
