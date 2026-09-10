@@ -23,7 +23,7 @@ import {
   localDateISO,
   sendAnswer,
 } from '@/lib/api';
-import { formatDateCa, formatDuration, formatStep, sportLabel, verdictColor } from '@/lib/format';
+import { formatDateCa, formatDuration, formatSegment, formatStep, sportLabel, verdictColor } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 
 const VERDICT_LABEL: Record<string, string> = { green: 'VERD', amber: 'ÀMBAR', red: 'VERMELL' };
@@ -40,7 +40,8 @@ export default function Avui() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [r, s] = await Promise.all([getLatestDailyReport(), getSessionsForDay(localDateISO())]);
+      const today = localDateISO();
+      const [r, s] = await Promise.all([getLatestDailyReport(today), getSessionsForDay(today)]);
       setReport(r);
       setSessions(s);
       setAnswers(r ? await getAnswers(r.id) : []);
@@ -79,6 +80,9 @@ export default function Avui() {
 
       {report ? (
         <View style={[styles.banner, { backgroundColor: verdictColor(report.verdict) }]}>
+          {report.isPreview && (
+            <Text style={styles.bannerPreview}>{"Preview d'ahir al vespre · l'informe del matí arriba amb el son"}</Text>
+          )}
           <Text style={styles.bannerVerdict}>{VERDICT_LABEL[report.verdict] ?? report.verdict}</Text>
           <Text style={styles.bannerSummary}>{report.summary}</Text>
         </View>
@@ -98,8 +102,13 @@ export default function Avui() {
             {s.is_test && ' · TEST'}
           </ThemedText>
           {(s.structure?.steps ?? []).map((step, i) => (
-            <ThemedText key={i} style={styles.step}>
+            <ThemedText key={`s${i}`} style={styles.step}>
               {formatStep(step)}
+            </ThemedText>
+          ))}
+          {(s.structure?.segments ?? []).map((seg, i) => (
+            <ThemedText key={`g${i}`} style={styles.step}>
+              {formatSegment(seg)}
             </ThemedText>
           ))}
         </View>
@@ -190,6 +199,7 @@ const styles = StyleSheet.create({
   date: { fontSize: 22, fontWeight: '800' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   banner: { borderRadius: 12, padding: 16 },
+  bannerPreview: { color: '#fff', opacity: 0.85, fontSize: 12, marginBottom: 6 },
   bannerVerdict: { color: '#fff', fontWeight: '800', fontSize: 13, letterSpacing: 2 },
   bannerSummary: { color: '#fff', fontSize: 17, fontWeight: '600', marginTop: 6 },
   card: { backgroundColor: 'rgba(127,127,127,0.1)', borderRadius: 12, padding: 14, gap: 4 },

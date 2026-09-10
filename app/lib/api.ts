@@ -1,6 +1,6 @@
 // Capa de dades de l'app: consultes de lectura via supabase-js (passa RLS).
 
-import type { Step } from './format';
+import type { Segment, Step } from './format';
 import { supabase } from './supabase';
 
 export type DailyReport = {
@@ -10,6 +10,9 @@ export type DailyReport = {
   summary: string;
   rationale: string;
   questions: string[];
+  windowStart: string;
+  // creat abans del dia que descriu (el preview del vespre): l'app ho ha de dir
+  isPreview: boolean;
 };
 
 export type PlanSession = {
@@ -20,7 +23,7 @@ export type PlanSession = {
   status: string;
   duration_sec_target: number | null;
   distance_m_target: number | null;
-  structure: { steps: Step[] } | null;
+  structure: { steps?: Step[]; segments?: Segment[] } | null;
   rationale: string | null;
   is_test: boolean;
 };
@@ -179,11 +182,14 @@ export async function getLogistics(goalId: number): Promise<LogisticsTask[]> {
   return (data ?? []) as LogisticsTask[];
 }
 
-export async function getLatestDailyReport(): Promise<DailyReport | null> {
+// L'informe que parla del dia demanat (window_start), el més recent: al matí és
+// l'informe del dia; abans, el preview de la nit anterior (isPreview = true).
+export async function getLatestDailyReport(dateISO: string): Promise<DailyReport | null> {
   const { data, error } = await supabase
     .from('coach_report')
-    .select('id, created_at, output')
+    .select('id, created_at, window_start, output')
     .eq('report_type', 'daily')
+    .eq('window_start', dateISO)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -197,6 +203,8 @@ export async function getLatestDailyReport(): Promise<DailyReport | null> {
     summary: output.summary ?? '',
     rationale: output.rationale ?? '',
     questions: output.questions_for_athlete ?? [],
+    windowStart: data.window_start,
+    isPreview: localDateISO(new Date(data.created_at)) < data.window_start,
   };
 }
 
