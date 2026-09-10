@@ -51,6 +51,7 @@ const session = {
   structure: { steps: [{ phase: 'main', duration_sec: 2400, target: { type: 'rpe', value: 3 } }] },
   rationale: null,
   is_test: false,
+  priority: 'support' as const,
 };
 
 beforeEach(() => {

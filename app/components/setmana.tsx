@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -13,13 +13,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import {
   Activity,
+  PlanBlock,
   PlanSession,
   getActivitiesForRange,
+  getBlockForRange,
   getSessionsForRange,
   localDateISO,
+  parseLocalISO,
   weekDaysISO,
 } from '@/lib/api';
-import { formatDuration, sportLabel, statusColor, statusLabel } from '@/lib/format';
+import {
+  formatDuration,
+  formatSegment,
+  formatStep,
+  formatWeekRangeCa,
+  sportLabel,
+  statusColor,
+  statusLabel,
+} from '@/lib/format';
 
 const WEEKDAY_NAMES = ['Dilluns', 'Dimarts', 'Dimecres', 'Dijous', 'Divendres', 'Dissabte', 'Diumenge'];
 
@@ -28,45 +39,56 @@ type WeekSession = PlanSession & { local_date: string };
 export default function Setmana() {
   const [sessions, setSessions] = useState<WeekSession[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [block, setBlock] = useState<PlanBlock | null>(null);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [open, setOpen] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const insets = useSafeAreaInsets();
 
-  const days = weekDaysISO();
   const today = localDateISO();
+  // Setmana relativa a avui (offset 0 = actual). Es deriva de localDateISO()
+  // i no de new Date() perquè els tests fixin el dia.
+  const days = useMemo(() => {
+    const base = parseLocalISO(today);
+    base.setDate(base.getDate() + 7 * weekOffset);
+    return weekDaysISO(base);
+  }, [today, weekOffset]);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [s, a] = await Promise.all([
+      const [s, a, b] = await Promise.all([
         getSessionsForRange(days[0], days[6]),
         getActivitiesForRange(days[0], days[6]),
+        getBlockForRange(days[0], days[6]),
       ]);
       setSessions(s);
       setActivities(a);
+      setBlock(b);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
     setLoading(false);
     setRefreshing(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [days]);
 
   useEffect(() => {
     // load() només fa setState després d'un await (no és síncron); la regla
     // del React Compiler no distingeix el codi que hi ha després de l'await.
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
     load();
   }, [load]);
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
+  const toggle = (id: number) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const linked = new Map(activities.filter((a) => a.plan_session_id != null).map((a) => [a.plan_session_id, a]));
 
@@ -77,9 +99,41 @@ export default function Setmana() {
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />
       }>
+      <View style={styles.header}>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Setmana anterior"
+          onPress={() => setWeekOffset((o) => o - 1)}
+          hitSlop={12}>
+          <ThemedText style={styles.arrow}>‹</ThemedText>
+        </TouchableOpacity>
+        <ThemedText style={styles.range}>{formatWeekRangeCa(days[0], days[6])}</ThemedText>
+        <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Setmana següent"
+          onPress={() => setWeekOffset((o) => o + 1)}
+          hitSlop={12}>
+          <ThemedText style={styles.arrow}>›</ThemedText>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.subheader}>
+        <ThemedText style={styles.block}>{block?.name ?? ''}</ThemedText>
+        {weekOffset !== 0 && (
+          <TouchableOpacity accessibilityRole="button" onPress={() => setWeekOffset(0)} hitSlop={12}>
+            <ThemedText style={styles.todayLink}>Avui</ThemedText>
+          </TouchableOpacity>
+        )}
+      </View>
+
       {error && <ThemedText style={styles.error}>{error}</ThemedText>}
 
-      {days.map((day, i) => {
+      {loading && (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" />
+        </View>
+      )}
+
+      {!loading && days.map((day, i) => {
         const daySessions = sessions.filter((s) => s.local_date === day);
         const extras = activities.filter((a) => a.local_date === day && a.plan_session_id == null);
         const isToday = day === today;
@@ -99,8 +153,16 @@ export default function Setmana() {
               return (
                 <View key={s.id} style={styles.session}>
                   <View style={[styles.dot, { backgroundColor: statusColor(s.status) }]} />
-                  <View style={styles.sessionBody}>
-                    <ThemedText style={styles.sessionTitle}>{s.title}</ThemedText>
+                  <TouchableOpacity
+                    style={styles.sessionBody}
+                    accessibilityRole="button"
+                    onPress={() => toggle(s.id)}>
+                    <View style={styles.titleRow}>
+                      <ThemedText style={styles.sessionTitle}>{s.title}</ThemedText>
+                      {s.priority === 'key' && s.sport !== 'rest' && (
+                        <ThemedText style={styles.key}>CLAU</ThemedText>
+                      )}
+                    </View>
                     <ThemedText style={styles.sessionMeta}>
                       {sportLabel(s.sport)}
                       {s.duration_sec_target != null && ` · ${formatDuration(s.duration_sec_target)}`}
@@ -117,7 +179,22 @@ export default function Setmana() {
                         </ThemedText>
                       </TouchableOpacity>
                     )}
-                  </View>
+                    {open.has(s.id) && (
+                      <View style={styles.detail}>
+                        {(s.structure?.steps ?? []).map((step, j) => (
+                          <ThemedText key={`s${j}`} style={styles.step}>
+                            {formatStep(step)}
+                          </ThemedText>
+                        ))}
+                        {(s.structure?.segments ?? []).map((seg, j) => (
+                          <ThemedText key={`g${j}`} style={styles.step}>
+                            {formatSegment(seg)}
+                          </ThemedText>
+                        ))}
+                        {s.rationale && <ThemedText style={styles.rationale}>{s.rationale}</ThemedText>}
+                      </View>
+                    )}
+                  </TouchableOpacity>
                 </View>
               );
             })}
@@ -144,7 +221,18 @@ export default function Setmana() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 16, gap: 10, paddingBottom: 48 },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  center: { paddingVertical: 48, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  arrow: { fontSize: 30, lineHeight: 34, paddingHorizontal: 12, fontWeight: '600' },
+  range: { fontSize: 18, fontWeight: '700' },
+  subheader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  block: { flex: 1, fontSize: 13, opacity: 0.8 },
+  todayLink: { fontSize: 14, fontWeight: '600', color: '#2e9e5b' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  key: { fontSize: 11, fontWeight: '700', color: '#2e9e5b', letterSpacing: 0.5 },
+  detail: { marginTop: 4, gap: 2 },
+  step: { fontSize: 13, opacity: 0.85 },
+  rationale: { fontSize: 13, opacity: 0.7, fontStyle: 'italic', marginTop: 2 },
   day: { borderRadius: 12, padding: 12, gap: 6, backgroundColor: 'rgba(127,127,127,0.08)' },
   today: { borderWidth: 1.5, borderColor: '#2e9e5b' },
   dayTitle: { fontSize: 15, fontWeight: '700' },

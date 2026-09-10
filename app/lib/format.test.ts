@@ -114,3 +114,10 @@ test('segments de simulacre i cursa (multisport)', () => {
   ).toBe('Cursa 3 km · 4:10/km');
   expect(formatSegment({ sport: 'run', distance_m: 9500 })).toBe('Cursa 9,5 km');
 });
+
+test('rang de setmana en català: un mes o dos, amb apòstrof on toca', () => {
+  const { formatWeekRangeCa } = require('./format');
+  expect(formatWeekRangeCa('2026-08-24', '2026-08-30')).toBe("24 – 30 d'agost");
+  expect(formatWeekRangeCa('2026-09-14', '2026-09-20')).toBe('14 – 20 de setembre');
+  expect(formatWeekRangeCa('2026-09-28', '2026-10-04')).toBe("28 de setembre – 4 d'octubre");
+});

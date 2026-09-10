@@ -275,3 +275,33 @@ test('registrar una sessió: els errors de la BD pugen', async () => {
     logManualActivity({ local_date: '2026-09-10', sport: 'run', duration_sec: 600 })
   ).rejects.toThrow('row-level security');
 });
+
+test('parseLocalISO dona el dia local a mitjanit, no el UTC', () => {
+  const { parseLocalISO } = require('./api');
+  const d = parseLocalISO('2026-08-29');
+  expect([d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()]).toEqual([2026, 7, 29, 0]);
+});
+
+test("el bloc del pla d'una setmana és el que la solapa", async () => {
+  const { getBlockForRange } = require('./api');
+  const block = { phase: 'peak', name: 'Setmana 3 · específica, tot a ritme de cursa' };
+  const chain = chainResolving({ data: block, error: null }, 'maybeSingle');
+  chain.gte = jest.fn(() => chain);
+  chain.lte = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+
+  expect(await getBlockForRange('2026-09-14', '2026-09-20')).toEqual(block);
+  expect(mockFrom).toHaveBeenCalledWith('plan_block');
+  expect(chain.lte).toHaveBeenCalledWith('start_date', '2026-09-20');
+  expect(chain.gte).toHaveBeenCalledWith('end_date', '2026-09-14');
+});
+
+test('les sessions de la setmana porten la prioritat (clau / suport / opcional)', async () => {
+  const { getSessionsForRange } = require('./api');
+  const chain = chainResolving({ data: [], error: null });
+  chain.gte = jest.fn(() => chain);
+  chain.lte = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  await getSessionsForRange('2026-08-24', '2026-08-30');
+  expect(chain.select).toHaveBeenCalledWith(expect.stringContaining('priority'));
+});

@@ -17,6 +17,7 @@ const swim = {
   structure: null,
   rationale: null,
   is_test: false,
+  priority: 'support' as const,
 };
 
 beforeEach(() => {
