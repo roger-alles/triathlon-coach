@@ -2,6 +2,23 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-10 — Després de Fornells: planificació rodant, bústia i aprovació híbrida
+
+Disseny complet a `docs/post-cursa-design.md`. Decisions d'en Roger: (1) el coach
+proposa un **macro** de blocs a partir dels objectius, s'aprova a l'app i es
+regenera quan canvien els objectius; cada diumenge el setmanal **escriu la
+setmana següent** dins del bloc vigent (planificació rodant, no un pla de mesos
+d'una tirada). (2) Els canvis es demanen des d'una **bústia** estructurada amb
+text lliure, no un xat. (3) **Aprovació híbrida**: canvis petits (≤3 dies, ≤2
+sessions, modificar/moure dins la setmana/cancel·lar no-clau, sense afegir
+càrrega, validador net) s'apliquen sols amb Desfés; la resta espera un Aplica a
+l'app. (4) Sonnet 5 per a diari, setmanal i peticions; Opus 5 només per al
+macro. Cost estimat 10-13 $/mes (dades reals: diari 0,11 $, setmanal 0,18 $).
+La revisió va trobar 7 bloquejants al codi actual (sense `add`, bricks que es
+perden en modify/move, cap lock, Desfés impossible sense rastre, `sys.exit`
+sense objectiu actiu, R1/R6 contra hores planificades, R8 amb taper parcial):
+tots amb arreglo al disseny. L'usuari no ha de tocar mai el terminal.
+
 ## 2026-09-10 — Barcelona 15-18/09 sense bici: la bici del 16 s'absorbeix a la del 19
 
 En Roger és a Barcelona del 15 al matí al 18 al vespre, sense bici, amb pista
