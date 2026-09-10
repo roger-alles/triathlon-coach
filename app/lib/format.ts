@@ -19,11 +19,29 @@ export type Step = {
   note?: string;
 };
 
+export type Segment = {
+  sport: string;
+  venue?: string;
+  target?: Target;
+  distance_m?: number;
+  duration_sec?: number;
+  timed?: boolean;
+  transition?: string;
+  note?: string;
+};
+
 export function formatDuration(sec: number): string {
-  const h = Math.floor(sec / 3600);
-  const min = Math.round((sec % 3600) / 60);
+  const total = Math.round(sec / 60);
+  const h = Math.floor(total / 60);
+  const min = total % 60;
   if (h === 0) return `${min} min`;
   return min === 0 ? `${h} h` : `${h} h ${min} min`;
+}
+
+function distance(m: number): string {
+  if (m < 1000) return `${m} m`;
+  const km = m / 1000;
+  return `${Number.isInteger(km) ? km : km.toFixed(1).replace('.', ',')} km`;
 }
 
 function pace(sec: number): string {
@@ -78,6 +96,23 @@ export function formatStep(step: Step): string {
   return phase ? `${phase} — ${body}` : body;
 }
 
+const VENUE_LABEL: Record<string, string> = { open_water: 'mar', pool: 'piscina' };
+
+// Un segment de simulacre o cursa (structure.segments): esport, quantitat, objectiu, lloc.
+export function formatSegment(seg: Segment): string {
+  if (seg.sport === 'transition') {
+    const name = (seg.transition ?? 'transició').toUpperCase();
+    return seg.timed ? `${name} cronometrada` : name;
+  }
+  const parts = [sportLabel(seg.sport)];
+  if (seg.distance_m != null) parts[0] += ` ${distance(seg.distance_m)}`;
+  else if (seg.duration_sec != null) parts[0] += ` ${formatDuration(seg.duration_sec)}`;
+  if (seg.target) parts.push(formatTarget(seg.target));
+  if (seg.venue && VENUE_LABEL[seg.venue]) parts.push(VENUE_LABEL[seg.venue]);
+  if (seg.note) parts.push(seg.note);
+  return parts.join(' · ');
+}
+
 const VERDICT_COLORS: Record<string, string> = {
   green: '#2e9e5b',
   amber: '#e6a817',
@@ -94,6 +129,7 @@ const SPORT_LABELS: Record<string, string> = {
   swim: 'Natació',
   brick: 'Brick',
   rest: 'Descans',
+  multisport: 'Triatló',
 };
 
 export function sportLabel(sport: string): string {
