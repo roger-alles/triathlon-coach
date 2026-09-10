@@ -136,6 +136,20 @@ export function sportLabel(sport: string): string {
   return SPORT_LABELS[sport] ?? sport;
 }
 
+const SPORT_EMOJI: Record<string, string> = {
+  run: '🏃',
+  bike: '🚴',
+  swim: '🏊',
+  brick: '🚴🏃',
+  rest: '🛌',
+  multisport: '🏊🚴🏃',
+  strength: '🏋️',
+};
+
+export function sportEmoji(sport: string): string {
+  return SPORT_EMOJI[sport] ?? '';
+}
+
 export function formatClock(sec: number): string {
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);

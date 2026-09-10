@@ -24,7 +24,7 @@ import {
   localDateISO,
   sendAnswer,
 } from '@/lib/api';
-import { formatDateCa, formatDuration, formatSegment, formatStep, sportLabel, verdictColor } from '@/lib/format';
+import { formatDateCa, formatDuration, formatSegment, formatStep, sportEmoji, sportLabel, verdictColor } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
 
 const VERDICT_LABEL: Record<string, string> = { green: 'VERD', amber: 'ÀMBAR', red: 'VERMELL' };
@@ -105,7 +105,7 @@ export default function Avui() {
             {sessions.length > 1 ? `Sessió d'avui (${i + 1} de ${sessions.length})` : "Sessió d'avui"}
           </ThemedText>
           <ThemedText style={styles.cardMeta}>
-            {sportLabel(s.sport)}
+            {sportEmoji(s.sport)} {sportLabel(s.sport)}
             {s.duration_sec_target != null && ` · ${formatDuration(s.duration_sec_target)}`}
             {` · ${s.title}`}
             {s.is_test && ' · TEST'}

@@ -36,7 +36,7 @@ beforeEach(() => {
 
 test('mostra les mètriques reals de la sortida', async () => {
   await render(<Activitat id={3} />);
-  expect(await screen.findByText(/Bici/)).toBeOnTheScreen();
+  expect(await screen.findByText(/🚴 Bici/)).toBeOnTheScreen();
   expect(screen.getByText(/2 h 34 min/)).toBeOnTheScreen();
   expect(screen.getByText(/67.8 km/)).toBeOnTheScreen();
   expect(screen.getByText(/132/)).toBeOnTheScreen();

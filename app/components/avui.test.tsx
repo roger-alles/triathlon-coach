@@ -91,6 +91,7 @@ test('pinta semàfor, titular, sessió amb passos i preguntes', async () => {
   expect(screen.getByText('ÀMBAR')).toBeOnTheScreen();
   expect(screen.getByText("Sessió d'avui")).toBeOnTheScreen();
   expect(screen.getByText(/Cursa · 40 min · Rodatge suau/)).toBeOnTheScreen();
+  expect(screen.getByText(/🏃 Cursa · 40 min · Rodatge suau/)).toBeOnTheScreen();
   expect(screen.getByText(/40 min · RPE 3/)).toBeOnTheScreen();
   expect(screen.getByText(/Com notes les cames\?/)).toBeOnTheScreen();
 });

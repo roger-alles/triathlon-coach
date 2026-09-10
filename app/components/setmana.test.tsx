@@ -64,7 +64,7 @@ test('els 7 dies hi són, amb les sessions al seu dia i el seu estat', async () 
 test('la sessió vinculada mostra el real; l\'activitat sense pla surt com a fora de pla', async () => {
   await renderSetmana();
   expect(await screen.findByText(/Real: 2 h 34 min/)).toBeOnTheScreen();
-  expect(screen.getByText(/Fora de pla · Natació · 52 min/)).toBeOnTheScreen();
+  expect(screen.getByText(/Fora de pla · 🏊 Natació · 52 min/)).toBeOnTheScreen();
 });
 
 test("tocar una activitat feta obre el seu detall", async () => {
@@ -74,7 +74,7 @@ test("tocar una activitat feta obre el seu detall", async () => {
   await user.press(screen.getByText(/Real: 2 h 34 min/));
   expect(mockPush).toHaveBeenCalledWith({ pathname: '/activitat', params: { id: 3 } });
 
-  await user.press(screen.getByText(/Fora de pla · Natació/));
+  await user.press(screen.getByText(/Fora de pla · 🏊 Natació/));
   expect(mockPush).toHaveBeenCalledWith({ pathname: '/activitat', params: { id: 1 } });
 });
 
@@ -140,4 +140,12 @@ test('tocar una sessió desplega els passos i la raó; tornar-la a tocar els ama
 
   await user.press(screen.getByText('Rodatge suau (canvi del coach)'));
   expect(screen.queryByText('40 min · RPE 3')).toBeNull();
+});
+
+test('cada sessió porta l\'emoji de la seva modalitat davant del títol', async () => {
+  await renderSetmana();
+  await screen.findByText(/Dilluns 24/);
+  expect(screen.getByText('🚴')).toBeOnTheScreen();
+  expect(screen.getByText('🚴🏃')).toBeOnTheScreen();
+  expect(screen.getByText('🏃')).toBeOnTheScreen();
 });

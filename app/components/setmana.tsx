@@ -27,6 +27,7 @@ import {
   formatSegment,
   formatStep,
   formatWeekRangeCa,
+  sportEmoji,
   sportLabel,
   statusColor,
   statusLabel,
@@ -158,6 +159,7 @@ export default function Setmana() {
                     accessibilityRole="button"
                     onPress={() => toggle(s.id)}>
                     <View style={styles.titleRow}>
+                      <ThemedText style={styles.emoji}>{sportEmoji(s.sport)}</ThemedText>
                       <ThemedText style={styles.sessionTitle}>{s.title}</ThemedText>
                       {s.priority === 'key' && s.sport !== 'rest' && (
                         <ThemedText style={styles.key}>CLAU</ThemedText>
@@ -206,7 +208,7 @@ export default function Setmana() {
                 onPress={() => router.push({ pathname: '/activitat', params: { id: a.id } })}>
                 <View style={[styles.dot, styles.extraDot]} />
                 <ThemedText style={styles.sessionMeta}>
-                  Fora de pla · {sportLabel(a.sport)}
+                  Fora de pla · {sportEmoji(a.sport)} {sportLabel(a.sport)}
                   {a.duration_sec != null && ` · ${formatDuration(a.duration_sec)}`} ›
                 </ThemedText>
               </TouchableOpacity>
@@ -229,6 +231,7 @@ const styles = StyleSheet.create({
   block: { flex: 1, fontSize: 13, opacity: 0.8 },
   todayLink: { fontSize: 14, fontWeight: '600', color: '#2e9e5b' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  emoji: { fontSize: 15 },
   key: { fontSize: 11, fontWeight: '700', color: '#2e9e5b', letterSpacing: 0.5 },
   detail: { marginTop: 4, gap: 2 },
   step: { fontSize: 13, opacity: 0.85 },
