@@ -184,6 +184,11 @@ export async function getLogistics(goalId: number): Promise<LogisticsTask[]> {
   return (data ?? []) as LogisticsTask[];
 }
 
+export async function setLogisticsDone(id: number, done: boolean): Promise<void> {
+  const { error } = await supabase.from('logistics_task').update({ done }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 // L'últim informe diari, etiquetat segons de quin dia parla respecte d'avui:
 // a partir de les 21:30 és el preview de demà (per preparar-lo i visualitzar-lo);
 // al matí, fins que arriba l'informe del dia, és el preview d'ahir per avui.

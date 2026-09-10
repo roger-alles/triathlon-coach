@@ -221,6 +221,17 @@ test('els errors de la BD no es traguen en silenci', async () => {
   await expect(getLatestDailyReport('2026-08-29')).rejects.toThrow('permission denied');
 });
 
+test('marcar una tasca de logística com a feta: només la columna done', async () => {
+  const { setLogisticsDone } = require('./api');
+  const chain = chainResolving({ data: null, error: null });
+  chain.update = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  await setLogisticsDone(4, true);
+  expect(mockFrom).toHaveBeenCalledWith('logistics_task');
+  expect(chain.update).toHaveBeenCalledWith({ done: true });
+  expect(chain.eq).toHaveBeenCalledWith('id', 4);
+});
+
 test("registrar una sessió sense rellotge: fila manual amb id negatiu, mai una fila de Garmin", async () => {
   const chain = chainResolving({ data: null, error: null });
   chain.insert = jest.fn(() => chain);

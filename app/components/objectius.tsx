@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
-import { Goal, LogisticsTask, getActiveGoal, getLogistics } from '@/lib/api';
+import { Goal, LogisticsTask, getActiveGoal, getLogistics, setLogisticsDone } from '@/lib/api';
 import { daysUntil, formatClock, sportLabel } from '@/lib/format';
 
 const SCENARIOS = ['Prudent', 'Objectiu', 'Gran dia'];
@@ -19,7 +19,19 @@ const TIME_ROWS: [string, string][] = [
 export default function Objectius() {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [logistics, setLogistics] = useState<LogisticsTask[]>([]);
+
   const [error, setError] = useState<string | null>(null);
+
+  const toggleLogistics = async (t: LogisticsTask) => {
+    const done = !t.done;
+    setLogistics((prev) => prev.map((x) => (x.id === t.id ? { ...x, done } : x)));
+    try {
+      await setLogisticsDone(t.id, done);
+    } catch (e) {
+      setLogistics((prev) => prev.map((x) => (x.id === t.id ? { ...x, done: t.done } : x)));
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
   const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
 
@@ -110,9 +122,13 @@ export default function Objectius() {
             {logistics.map((t) => {
               const [, m, d] = t.local_date.split('-');
               return (
-                <ThemedText key={t.id} style={styles.logistics}>
-                  {t.done ? '✓' : '·'} {d}/{m} — {t.title}
-                </ThemedText>
+                <TouchableOpacity key={t.id} onPress={() => toggleLogistics(t)} style={styles.logisticsRow}>
+                  <ThemedText style={[styles.logistics, t.done && styles.logisticsDone]}>
+                    {t.done ? '✓' : '·'} {d}/{m} — {t.title}
+                    {t.blocking && !t.done ? ' · imprescindible' : ''}
+                  </ThemedText>
+                  {t.detail && !t.done && <ThemedText style={styles.logisticsDetail}>{t.detail}</ThemedText>}
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -173,7 +189,10 @@ const styles = StyleSheet.create({
   timeHeader: { fontWeight: '700', fontSize: 12, opacity: 0.7 },
   timeTotal: { fontWeight: '800' },
   note: { fontSize: 12, opacity: 0.6, marginTop: 4 },
+  logisticsRow: { paddingVertical: 4 },
   logistics: { fontSize: 14 },
+  logisticsDone: { opacity: 0.5, textDecorationLine: 'line-through' },
+  logisticsDetail: { fontSize: 12, opacity: 0.7, marginLeft: 16 },
   protocolRow: { flexDirection: 'row', gap: 10 },
   protocolTime: { fontWeight: '700', width: 48, fontVariant: ['tabular-nums'] },
   protocolBody: { flex: 1 },
