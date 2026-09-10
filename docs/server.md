@@ -32,6 +32,7 @@
 | Sync horari | `0 6-22 * * *` | `coach-job.sh sync`: sync complet perquè els entrenos surtin a l'app en menys d'una hora |
 | Vespre | `30 21 * * *` | `coach-job.sh evening`: sync + preview de demà |
 | Setmanal | `30 20 * * 0` | `coach-job.sh weekly`: sync + revisió setmanal |
+| Còpia BD | `50 4 * * *` | `backup-db.sh`: pg_dump comprimit, 14 dies |
 | Desplegament (crontab de root) | `50 5 * * *` | `git pull --ff-only` de `main` + `pip install` + `npm install` a `app/` + reinici del servei `expo-dev` |
 
 Cost amb Garmin un dia típic: ~25 intents buits × 1 petició + 1 sync del matí
@@ -39,6 +40,21 @@ Cost amb Garmin un dia típic: ~25 intents buits × 1 petició + 1 sync del mat�
 
 Tot el que es fusiona a `main` a GitHub és al servidor l'endemà a les 05:50.
 Per desplegar a l'acte: `ssh entrenador 'sudo -u entrenador -H git -C ~/entrenador-triatlo pull --ff-only && systemctl restart expo-dev'`.
+
+## Còpia de seguretat de la base de dades
+
+`scripts/backup-db.sh` (cron de `entrenador`, 04:50): `pg_dump` de l'esquema
+`public` comprimit a `/home/entrenador/backups/db-AAAAMMDD.sql.gz`, 14 dies de
+retenció (~1,5 MB cadascun). Log: `logs/backup.log`. Fins que el PR arribi a
+`main`, el cron té com a alternativa una còpia del script a `~/bin/`.
+
+Restaurar en un projecte Supabase buit (mai sobre el que té dades):
+
+```bash
+gunzip -c ~/backups/db-2026-09-10.sql.gz | psql "$DATABASE_URL_NOU"
+```
+
+Comprovació ràpida: `gunzip -c fitxer | grep -c "^COPY "` ha de donar 13 (taules).
 
 ## Operacions habituals
 
@@ -82,8 +98,18 @@ corre aquí com a servei `systemd`, permanent i amb reinici automàtic.
 
 Per què això i no TestFlight: en Roger prefereix seguir amb Expo Go de moment
 (canvis visibles a l'acte sense compilar). Limitacions: cada SDK nou d'Expo Go
-trenca l'app fins que es puja; sense notificacions push; servidor de
-desenvolupament exposat en HTTP (protecció: el login obligatori d'Expo Go 57).
+trenca l'app fins que es puja; sense notificacions push.
+
+**Risc conegut (revisió 10/09)**: el port 8081 és HTTP obert a tot Internet.
+El login d'Expo Go 57 protegeix l'app dins d'Expo Go, NO el port: qualsevol
+pot descarregar el paquet JavaScript (amb la URL i la clau *publicable* de
+Supabase, que és pública per disseny; cap secret de servidor) i veure els
+endpoints de Metro. Amb un sol usuari i la clau publicable és tolerable a curt
+termini; no ho és com a estat permanent. Sortides, de menys a més feina:
+(1) regla del tallafocs limitada a la IP d'en Roger (falla fora de casa);
+(2) Tailscale al servidor i al mòbil, i Metro només a la xarxa privada;
+(3) TestFlight (compte de desenvolupador ja disponible): l'app instal·lada,
+sense Metro exposat, amb notificacions. La (3) és la recomanada després del 27/09.
 
 ## Què NO hi ha al servidor
 
