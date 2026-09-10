@@ -2,6 +2,25 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-10 — Barcelona 15-18/09 sense bici: la bici del 16 s'absorbeix a la del 19
+
+En Roger és a Barcelona del 15 al matí al 18 al vespre, sense bici, amb pista
+d'atletisme i piscina de 50 m. La bici clau del 16 ("Dos blocs de vint" +
+brick) no cap. No es mou al 14 (48 h després del simulacre del 12, dos blocs
+de 20' a esforç de cursa és massa) ni al 20 (dues bicis seguides abans del
+taper, i el genoll). El seu contingut específic, 2×20' a esforç de cursa,
+substitueix els 3×10' de la bici del 19 ("Última llarga: dos blocs de vint",
+75'). El 16 passa a dia suau amb dues sessions support: piscina de tècnica amb
+10 drills de viratge obert (en Roger para a cada paret; objectiu viratge < 2 s
+perquè els 2×500 del 17 siguin continus) i rodatge 40' RPE 3. El 18 queda com
+estava (pista); la natació regenerativa de divendres tarda es descarta (Roger).
+
+Mecànica: 16 bike+brick surten del yaml; a la BD queden `status=moved`,
+`superseded_by` la bici i el brick del 19 (50→54, 51→55; noves 73 natació, 74 rodatge). El validador dona
+dos avisos R13 nous i acceptats per a la setmana del 14: bici al 19% (marge
+35-55) i natació al 44% (marge 2-42). Són correctes: aquella setmana no hi ha
+bici possible. Bricks encadenats al pla: 7 → 6.
+
 ## 2026-09-10 — Tres decisions de pla després de la revisió (aprovades per en Roger)
 
 1. **Simulacre del 12/09 = assaig de nutrició.** L'únic assaig previst (bici

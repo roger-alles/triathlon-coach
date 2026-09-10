@@ -468,27 +468,28 @@ blocks:
         - {phase: cooldown, distance_m: 100, target: {type: rpe, value: 2}}
 
   - date: 2026-09-16
-    sport: bike
-    session_type: race_pace
-    title: "Dos blocs de vint"
-    priority: key
-    duration_sec_target: 4500
-    rationale: "Exactament l'esforç del dia 27, ni un watt més."
+    sport: swim
+    session_type: technique
+    title: "Tècnica i viratge obert"
+    priority: support
+    duration_sec_target: 2400
+    rationale: "Substitueix la bici del 16 (Roger a Barcelona 15-18/09 sense bici; decisió 10/09; els 2×20' passen a la bici del 19). Piscina de 50 m. Objectiu: viratge obert en menys de 2 s perquè els 2×500 del 17 siguin continus: respirar dues braçades abans del mur, tocar amb una mà, girar de costat sense sortir vertical, peus al mur quan la mà en marxa, fletxa i primera braçada sense respirar."
     structure:
       steps:
-        - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
-        - {phase: main, repeats: 2, work: {duration_sec: 1200, target: {type: rpe, value: 7, label: "esforç de cursa"}}, recovery: {duration_sec: 300, target: {type: rpe, value: 3}}}
-        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
+        - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
+        - {phase: main, repeats: 10, work: {distance_m: 30, target: {type: open}, note: "drill de viratge: 15 m cap al mur a ritme, viratge obert, 15 m de sortida"}, recovery: {duration_sec: 20}}
+        - {phase: main, repeats: 4, work: {distance_m: 100, target: {type: rpe, value: 5}, note: "viratge sense parar"}, recovery: {duration_sec: 20}}
+        - {phase: cooldown, distance_m: 200, target: {type: rpe, value: 2}}
 
   - date: 2026-09-16
-    sport: brick
-    session_type: bike_run
-    title: "Brick a ritme"
+    sport: run
+    session_type: easy
+    title: "Rodatge suau"
     priority: support
-    duration_sec_target: 720
-    parent_of_day: bike
+    duration_sec_target: 2400
+    rationale: "Dia suau entre el ritme de cursa del 15 i els 2×500 del 17. Sense progressius."
     structure:
-      steps: [{phase: main, duration_sec: 720, target: {type: pace_sec_km, value: 250, label: "ritme objectiu"}}]
+      steps: [{phase: main, duration_sec: 2400, target: {type: rpe, value: 3}}]
 
   - date: 2026-09-17
     sport: swim
@@ -496,6 +497,7 @@ blocks:
     title: "Continuïtat llarga"
     priority: key
     duration_sec_target: 2400
+    rationale: "Barcelona, piscina de 50 m: deu llargs sense parar per 500; orientació cap amunt cada 8-10 braçades als 500, com al mar."
     structure:
       steps:
         - {phase: warmup, distance_m: 200, target: {type: rpe, value: 3}}
@@ -521,14 +523,15 @@ blocks:
   - date: 2026-09-19
     sport: bike
     session_type: long
-    title: "Última llarga"
+    title: "Última llarga: dos blocs de vint"
     priority: key
-    duration_sec_target: 5400
+    duration_sec_target: 4500
+    rationale: "Absorbeix la bici del 16 (Roger a Barcelona 15-18/09; decisió 10/09): els 2×20' a esforç de cursa substitueixen els 3×10'. Exactament l'esforç del dia 27, ni un watt més."
     structure:
       steps:
         - {phase: warmup, duration_sec: 900, target: {type: rpe, value: 4}}
-        - {phase: main, repeats: 3, work: {duration_sec: 600, target: {type: rpe, value: 7, label: "esforç de cursa"}}, recovery: {duration_sec: 300, target: {type: rpe, value: 3}}}
-        - {phase: cooldown, duration_sec: 900, target: {type: rpe, value: 3}}
+        - {phase: main, repeats: 2, work: {duration_sec: 1200, target: {type: rpe, value: 7, label: "esforç de cursa"}}, recovery: {duration_sec: 300, target: {type: rpe, value: 3}}}
+        - {phase: cooldown, duration_sec: 600, target: {type: rpe, value: 3}}
 
   - date: 2026-09-19
     sport: brick

@@ -33,9 +33,15 @@ def test_fornells_plan_passes_all_14_rules():
     # practicat dins del pla. Cap violació bloquejant, i cap avís NOU.
     blocking = [v for v in violations if v.severity == "blocking"]
     assert blocking == [], "\n".join(f"{v.rule}: {v.message}" for v in blocking)
+    # 10/09: Roger és a Barcelona 15-18/09 sense bici (docs/decisions.md). La
+    # bici del 16 s'absorbeix a la del 19 i el 16 passa a natació + rodatge:
+    # la setmana del 14 queda amb bici al 19% i natació al 44%. Dos avisos R13
+    # correctes i acceptats: no hi ha bici possible aquells dies.
     assert sorted(v.message for v in violations) == [
         "2026-09-18: 'run/intervals' mai practicat abans, a 9 dies de la cursa",
         "2026-09-23: 'run/intervals' mai practicat abans, a 4 dies de la cursa",
+        "setmana 2026-09-14: bike al 19% del temps, fora de [35, 55]% (perfil triathlon)",
+        "setmana 2026-09-14: swim al 44% del temps, fora de [2, 42]% (perfil triathlon)",
     ]
 
 
@@ -44,4 +50,4 @@ def test_fornells_loads_expected_shape():
     assert len(plan) == 44
     assert goal.event_date == date(2026, 9, 27)
     assert sum(1 for s in plan if s.is_goal_event) == 1
-    assert sum(1 for s in plan if s.chained) == 7
+    assert sum(1 for s in plan if s.chained) == 6
