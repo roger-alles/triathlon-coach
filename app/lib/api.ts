@@ -216,6 +216,43 @@ export async function getLatestDailyReport(todayISO: string): Promise<DailyRepor
   };
 }
 
+export type ManualActivityInput = {
+  local_date: string;
+  sport: string;
+  sub_sport?: string;
+  duration_sec: number;
+  distance_m?: number | null;
+  perceived_effort?: number | null;
+  feeling?: number | null;
+  athlete_notes?: string | null;
+  plan_session_id?: number | null;
+};
+
+// Sessió feta sense rellotge (natació a mar, piscina cronometrada). Fila manual
+// amb id negatiu (-AAAAMMDDhhmm): RLS només deixa inserir ids < 0, i el sync
+// horari li posa la càrrega estimada i l'estat de la sessió del pla.
+export async function logManualActivity(input: ManualActivityInput, now: Date = new Date()): Promise<void> {
+  const hhmm = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+  const id = -Number(`${input.local_date.replace(/-/g, '')}${hhmm}`);
+  const row = {
+    id,
+    start_time: new Date(now.getTime() - input.duration_sec * 1000).toISOString(),
+    local_date: input.local_date,
+    sport: input.sport,
+    sub_sport: input.sub_sport ?? null,
+    duration_sec: input.duration_sec,
+    distance_m: input.distance_m ?? null,
+    perceived_effort: input.perceived_effort ?? null,
+    feeling: input.feeling ?? null,
+    athlete_notes: input.athlete_notes ?? null,
+    plan_session_id: input.plan_session_id ?? null,
+    load_estimated: true,
+    raw: { manual: true, source: 'app', plan_session_id: input.plan_session_id ?? null },
+  };
+  const { error } = await supabase.from('activity').insert(row);
+  if (error) throw new Error(error.message);
+}
+
 export type AthleteAnswer = {
   id: number;
   question: string;
