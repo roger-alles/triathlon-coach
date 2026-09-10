@@ -98,8 +98,18 @@ corre aquí com a servei `systemd`, permanent i amb reinici automàtic.
 
 Per què això i no TestFlight: en Roger prefereix seguir amb Expo Go de moment
 (canvis visibles a l'acte sense compilar). Limitacions: cada SDK nou d'Expo Go
-trenca l'app fins que es puja; sense notificacions push; servidor de
-desenvolupament exposat en HTTP (protecció: el login obligatori d'Expo Go 57).
+trenca l'app fins que es puja; sense notificacions push.
+
+**Risc conegut (revisió 10/09)**: el port 8081 és HTTP obert a tot Internet.
+El login d'Expo Go 57 protegeix l'app dins d'Expo Go, NO el port: qualsevol
+pot descarregar el paquet JavaScript (amb la URL i la clau *publicable* de
+Supabase, que és pública per disseny; cap secret de servidor) i veure els
+endpoints de Metro. Amb un sol usuari i la clau publicable és tolerable a curt
+termini; no ho és com a estat permanent. Sortides, de menys a més feina:
+(1) regla del tallafocs limitada a la IP d'en Roger (falla fora de casa);
+(2) Tailscale al servidor i al mòbil, i Metro només a la xarxa privada;
+(3) TestFlight (compte de desenvolupador ja disponible): l'app instal·lada,
+sense Metro exposat, amb notificacions. La (3) és la recomanada després del 27/09.
 
 ## Què NO hi ha al servidor
 
