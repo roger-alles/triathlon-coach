@@ -29,10 +29,10 @@
 | Feina | Cron | Què fa |
 |---|---|---|
 | Matí | `*/5 6-11 * * *` | `coach-job.sh morning`: primer `coach.gate` (¿ja hi ha informe? → BD; ¿Garmin té el son d'avui? → 1 petició); només si GENERA: sync complet + informe. Un cop al dia; després, zero peticions |
-| Sync horari | `0 6-22 * * *` | `coach-job.sh sync`: sync complet perquè els entrenos surtin a l'app en menys d'una hora |
+| Sync horari | `1 6-22 * * *` | `coach-job.sh sync`: sync complet perquè els entrenos surtin a l'app en menys d'una hora |
 | Vespre | `30 21 * * *` | `coach-job.sh evening`: sync + preview de demà |
 | Setmanal | `30 20 * * 0` | `coach-job.sh weekly`: sync + revisió setmanal |
-| Decisions | `*/5 6-23 * * *` | `coach-job.sh decisions`: aplica / descarta / desfà les propostes segons el que l'atleta ha tocat a l'app (`coach_decision`). Inert mentre `coach_apply_mode` sigui `dry_run` |
+| Decisions | `3-58/5 6-23 * * *` | `coach-job.sh decisions`: aplica / descarta / desfà les propostes segons el que l'atleta ha tocat a l'app (`coach_decision`). Inert mentre `coach_apply_mode` sigui `dry_run` |
 | Còpia BD | `50 4 * * *` | `backup-db.sh`: pg_dump comprimit, 14 dies |
 | Desplegament (crontab de root) | `50 5 * * *` | `git pull --ff-only` de `main` + `pip install` + `npm install` a `app/` + reinici del servei `expo-dev` |
 
@@ -41,7 +41,11 @@ Cost amb Garmin un dia típic: ~25 intents buits × 1 petició + 1 sync del mat�
 
 Totes les feines comparteixen un lock (`logs/coach.lock`, `flock`): `morning` i
 `sync` desisteixen si està ocupat, `evening`/`weekly` esperen fins a 10 min,
-`decisions` fins a 15 (perquè passin DESPRÉS del setmanal). El mode d'aplicació
+`decisions` fins a 15 (perquè passin DESPRÉS del setmanal). Els minuts van
+esglaonats (matí :00/:05…, sync :01, decisions :03/:08…) perquè cap feina que
+desisteix no coincideixi mai amb una altra: cron les arrenca al mateix segon i
+la que perd el `flock` salta el tick (l'11/09 `morning` va perdre 24 de 63
+intents contra `decisions` i l'informe va sortir 25 min tard). El mode d'aplicació
 del coach (`dry_run` / `hybrid`) és a la BD, `app_setting.coach_apply_mode`, no
 al script: l'app el canvia. Fins al 28/09: `dry_run`.
 
