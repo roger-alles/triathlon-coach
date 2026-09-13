@@ -35,6 +35,7 @@ Garmin Connect ──sync──▶ Postgres (Supabase) ◀──── app mòbi
 3. `coach/run.py` i `coach/rules.py`: el cor. Generació de l'informe i validació.
 4. `app/app/(tabs)/index.tsx`: la pantalla Avui.
 5. `docs/post-cursa-design.md`: cap on va després del 27/09 (planificació rodant, aprovació de propostes des de l'app).
+6. `docs/security-review-2026-09.md`: revisió de seguretat (hardening, còpies, pentest) i riscos acceptats.
 
 ## Executar
 
