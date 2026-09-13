@@ -68,7 +68,47 @@ Restaurar en un projecte Supabase buit (mai sobre el que té dades):
 gunzip -c ~/backups/db-2026-09-10.sql.gz | psql "$DATABASE_URL_NOU"
 ```
 
-Comprovació ràpida: `gunzip -c fitxer | grep -c "^COPY "` ha de donar 13 (taules).
+Comprovació ràpida: `gunzip -c fitxer | grep -c "^COPY "` ha de donar 16 (taules,
+des de la migració 0010).
+
+### Fora de la VM (des del 13/09)
+
+Les còpies del servidor viuen al mateix disc que la BD que protegeixen. Dues
+capes més:
+
+- **Mac d'en Roger**: `scripts/backup-pull.sh` baixa per rsync tots els
+  `db-*.sql.gz` a `~/Backups/entrenador-triatlo/` i no n'esborra mai cap.
+  launchd `cat.entrenador.backup-pull` a les 08:15 (si el Mac dormia, en
+  despertar). Instal·lar: copiar el plist de `scripts/launchd/` a
+  `~/Library/LaunchAgents/` i `launchctl bootstrap gui/$UID <plist>`.
+  Log: `logs/launchd-backup-pull.log`.
+- **Snapshot de Clouding**: snapshot de la VM sencera (inclou `~/backups`, el
+  `.env` i els tokens de Garmin) des del panell de Clouding, setmanal, fet a
+  mà per en Roger (diumenge, després del setmanal). Restaurar un snapshot
+  torna la màquina sencera a aquell dia; les còpies de la BD del Mac cobreixen
+  els dies entremig.
+
+Restauració real en una BD buida: pendent de fer (no hi ha Postgres local);
+vegeu `docs/security-review-2026-09.md`.
+
+## Seguretat del servidor (hardening 13/09/2026)
+
+| Capa | Estat | Verificar |
+|---|---|---|
+| SSH | només claus: `PermitRootLogin prohibit-password`, `PasswordAuthentication no`, `MaxAuthTries 3` (`/etc/ssh/sshd_config.d/10-hardening.conf`) | `sshd -T \| grep -E "permitrootlogin\|passwordauth"`; des del Mac `ssh -o PubkeyAuthentication=no entrenador` ha de dir `Permission denied (publickey)` |
+| fail2ban | jail `sshd`, 3 intents en 10 min → 1 h de ban (`/etc/fail2ban/jail.local`, backend systemd) | `fail2ban-client status sshd` |
+| ufw | entrada denegada per defecte; permès 22/tcp i 8081/tcp | `ufw status verbose` |
+| Actualitzacions | `unattended-upgrades` diari (`/etc/apt/apt.conf.d/20auto-upgrades`) | `systemctl status unattended-upgrades`; `ls /var/run/reboot-required` |
+| Secrets | `.env` i `app/.env` 600 de `entrenador`; tokens Garmin a `~/.garminconnect` 700 | `ls -la ~entrenador/entrenador-triatlo/.env` |
+
+Abans del hardening: 13.105 intents de login fallits en 24 h (3 IPs), root amb
+contrasenya obert. El pas a "només claus" es va fer amb una sessió oberta i
+verificant una sessió nova abans de tancar-la: **fer-ho sempre així**. Si un
+dia el Mac perd la clau, l'accés és per la consola del panell de Clouding.
+
+Desbloquejar una IP bandejada per error: `fail2ban-client set sshd unbanip <ip>`.
+
+Riscos acceptats i data de revisió: `docs/security-review-2026-09.md`.
 
 ## Operacions habituals
 
