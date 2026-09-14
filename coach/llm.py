@@ -76,8 +76,13 @@ class CoachLLM:
         else:
             response = self.client.messages.create(**request)
         if response.stop_reason == "max_tokens":
+            n_text = sum(len(b.text) for b in response.content if b.type == "text")
+            n_think = sum(len(getattr(b, "thinking", "") or "") for b in response.content
+                          if b.type == "thinking")
             raise OutputCutOff(
-                f"resposta tallada per longitud ({max_tokens} tokens)")
+                f"resposta tallada per longitud (sostre {max_tokens} tokens; "
+                f"{response.usage.output_tokens} generats: {n_text} caràcters de JSON, "
+                f"{n_think} de raonament)")
         if response.stop_reason != "end_turn":
             raise RuntimeError(
                 f"resposta incompleta del model (stop_reason="

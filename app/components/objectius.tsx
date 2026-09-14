@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GoalForm from '@/components/goal-form';
 import { ThemedText } from '@/components/themed-text';
-import { AthleteRequest, Goal, LogisticsTask, PlanBlockFull, getBlocks, getGoals, getLogistics, getRequests, localDateISO, sendRequest, setLogisticsDone } from '@/lib/api';
+import { AthleteRequest, getBlocks, getGoals, getLogistics, getMacroAnswer, getRequests, Goal, localDateISO, LogisticsTask, MacroAnswer, PlanBlockFull, sendRequest, setLogisticsDone } from '@/lib/api';
 import { daysUntil, formatClock, pace, sportLabel } from '@/lib/format';
 
 const SCENARIOS = ['Prudent', 'Objectiu', 'Gran dia'];
@@ -51,6 +51,7 @@ export default function Objectius() {
   const [editing, setEditing] = useState<Goal | 'new' | null>(null);
   const [blocks, setBlocks] = useState<PlanBlockFull[]>([]);
   const [requests, setRequests] = useState<AthleteRequest[]>([]);
+  const [answer, setAnswer] = useState<MacroAnswer | null>(null);
   const [requested, setRequested] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -75,6 +76,8 @@ export default function Objectius() {
       const [bs, rs] = await Promise.all([getBlocks(), getRequests(3)]);
       setBlocks(bs);
       setRequests(rs);
+      const last = rs[0];
+      setAnswer(last?.status === 'answered' && last.report_id != null ? await getMacroAnswer(last.report_id) : null);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -165,6 +168,15 @@ export default function Objectius() {
         )}
         {!requested && lastRequest?.status === 'failed' && lastRequest.error && (
           <ThemedText style={styles.error}>{lastRequest.error}</ThemedText>
+        )}
+        {!requested && answer && (
+          <ThemedText style={styles.note}>
+            {answer.hasBlockChanges
+              ? answer.proposalStatus === 'proposed'
+                ? 'Proposta de blocs pendent: mira-la a Avui.'
+                : `Última resposta del coach: ${answer.summary}`
+              : `El coach ha respost sense canviar blocs: ${answer.summary}`}
+          </ThemedText>
         )}
       </View>
     </>

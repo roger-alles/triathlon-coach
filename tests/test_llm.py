@@ -86,8 +86,10 @@ def test_weekly_gets_a_bigger_budget_through_streaming():
 def test_cut_off_output_is_a_specific_error_the_loop_can_feed_back():
     fake = _FakeClient(stop_reason="max_tokens")
     llm = CoachLLM(client=fake, model="claude-sonnet-5")
-    with pytest.raises(OutputCutOff):
+    with pytest.raises(OutputCutOff) as e:
         llm.generate(system="s", messages=[{"role": "user", "content": "{}"}])
+    # el missatge diu què s'ha gastat: tokens generats i caràcters de JSON vs raonament
+    assert "700 generats" in str(e.value) and "raonament" in str(e.value)
 
 
 def test_other_incomplete_stops_still_raise():

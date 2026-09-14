@@ -146,6 +146,27 @@ export async function getRequests(limit = 3): Promise<AthleteRequest[]> {
   return (data ?? []) as AthleteRequest[];
 }
 
+export type MacroAnswer = { id: number; proposalStatus: string; summary: string; hasBlockChanges: boolean };
+
+// L'informe que ha respost una petició de macro: si no porta canvis de blocs
+// no surt a Avui (no hi ha res a aprovar), i Objectius n'ensenya el resum.
+export async function getMacroAnswer(reportId: number): Promise<MacroAnswer | null> {
+  const { data, error } = await supabase
+    .from('coach_report')
+    .select('id, proposal_status, output')
+    .eq('id', reportId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const row = data as Record<string, any>;
+  return {
+    id: row.id,
+    proposalStatus: row.proposal_status,
+    summary: row.output?.summary ?? '',
+    hasBlockChanges: (row.output?.block_changes ?? []).length > 0,
+  };
+}
+
 // Propostes obertes o acabades de resoldre (últims 7 dies), sense el keep.
 // En dry_run no n'hi ha cap: tot queda a 'none'.
 export async function getOpenProposals(todayISO: string): Promise<Proposal[]> {

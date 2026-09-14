@@ -215,6 +215,24 @@ def _feedback_message(errors: list[str]) -> str:
             f"l'informe COMPLET (no només els canvis).")
 
 
+NO_BLOCK_CHANGES = "Cap canvi de blocs"
+
+
+def _macro_shape_errors(output: dict) -> list[str]:
+    """Un macro parla de blocs i només de blocs. Sense block_changes, la proposta
+    seria buida (res a aprovar) mentre el rationale diu que afegeix coses: el
+    model ho ha de posar al JSON o dir explícitament que no cal tocar res."""
+    errors = []
+    if any(c.get("action") != "keep" for c in output.get("session_changes") or []):
+        errors.append("el macro no toca sessions: session_changes ha de ser []")
+    if not output.get("block_changes") and not (output.get("summary") or "").startswith(NO_BLOCK_CHANGES):
+        errors.append("informe macro sense block_changes: si afegeixes, modifiques o cancel·les "
+                      "blocs (com diu el rationale), han d'anar a block_changes amb new_block "
+                      f"complet; si cap bloc ha de canviar, block_changes: [] i un summary que "
+                      f"comenci per '{NO_BLOCK_CHANGES}'")
+    return errors
+
+
 def blocking_signatures(plan: list[Session], athlete: Athlete, history: History,
                         goals: list, today: date) -> set[tuple[str, str]]:
     """(regla, missatge) de les violacions bloquejants que el pla JA té."""
@@ -250,16 +268,19 @@ def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
             output, usage = llm.generate(system, messages, report_type)
         except OutputCutOff as e:
             # sense JSON de fiar: una tanda d'infraccions més, i que sigui breu
-            validation_history.append([f"resposta tallada per longitud ({e}): "
-                                       f"sigues més compacte, keep sense comentaris"])
+            hint = ("un macro porta session_changes: [] i NOMÉS block_changes; "
+                    "rationale de 2500 caràcters com a molt"
+                    if report_type == "macro" else "sigues més compacte, keep sense comentaris")
+            validation_history.append([f"resposta tallada per longitud ({e}): {hint}"])
             messages += [{"role": "user", "content": _feedback_message(validation_history[-1])}]
             continue
         total_usage["model"] = usage["model"]
         total_usage["input_tokens"] += usage["input_tokens"]
         total_usage["output_tokens"] += usage["output_tokens"]
 
-        errors = semantic_errors(output["session_changes"], plan_by_id, athlete, blocks)
         block_changes = output.get("block_changes") or []
+        errors = _macro_shape_errors(output) if report_type == "macro" else []
+        errors += semantic_errors(output["session_changes"], plan_by_id, athlete, blocks)
         cycle_blocks = blocks
         if block_changes:
             errors += block_errors(block_changes, blocks, goals, history, today, plan=active,
@@ -519,8 +540,11 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
                                   ).to_dict()
         if mode == "hybrid":
             proposal_status = "auto_applied" if classification["auto"] else "proposed"
-        if report_type == "macro" and proposal_status == "auto_applied":
-            proposal_status = "proposed"   # un macro mai s'aplica sol, ni buit
+        if report_type == "macro":
+            # un macro mai s'aplica sol; i sense canvis de blocs no és cap
+            # proposta (res a aprovar): informe informatiu
+            has_blocks = bool(result["output"].get("block_changes"))
+            proposal_status = "proposed" if has_blocks and mode == "hybrid" else "none"
     goal = primary_goal(goals)
     window_end = goal.event_date if (goal and goal.event_date and goal.event_date > today) else None
 
