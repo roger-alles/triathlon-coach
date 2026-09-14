@@ -78,8 +78,11 @@ def test_recent_answers_reads_the_athlete_answer_table():
 
 
 ATHLETE_COLS = ("name", "birth_date", "max_hr", "resting_hr_baseline",
-                "ftp_watts", "css_sec_per_100m", "threshold_pace_sec_km")
-ATHLETE_ROW = ("Roger", date(2005, 12, 13), 211, 50, None, None, None)
+                "ftp_watts", "css_sec_per_100m", "threshold_pace_sec_km", "profile")
+PROFILE = {"constraints": {"fixed_rest_day": "monday", "weekly_hours_ceiling": 8},
+           "health": {"knee": "protuberància òssia; vigilar després de bicis llargues"},
+           "notes": "vacances a l'agost"}
+ATHLETE_ROW = ("Roger", date(2005, 12, 13), 211, 50, None, None, None, PROFILE)
 
 
 def _full_conn(**extra_by_table):
@@ -203,3 +206,30 @@ def test_build_context_carries_the_macro_blocks_and_real_weekly_hours():
                                  "end_date": "2026-09-27", "target_weekly_hours": 3.5, "intent": "i",
                                  "fallback": "f", "status": "active", "sessions_planned": 6}]
     assert snapshot["history_weekly_hours"] == [{"monday": "2026-09-07", "hours": 5.26}]
+
+
+def test_athlete_profile_reaches_the_snapshot_and_goals_no_longer_carry_it():
+    from coach.context import _athlete, _goals
+
+    athlete = _athlete(_full_conn())
+    assert athlete["constraints"]["weekly_hours_ceiling"] == 8
+    assert athlete["health"]["knee"].startswith("protuberància")
+    assert athlete["notes"] == "vacances a l'agost"
+    assert athlete["thresholds_missing"] == ["ftp_watts", "css_sec_per_100m",
+                                             "threshold_pace_sec_km"]
+    conn = _full_conn(**{"from goal where": (
+        ("name", "discipline", "event_date", "priority", "profile", "id", "notes"),
+        [("Fornells", "triathlon", date(2026, 9, 27), "A",
+          {"athlete_context": {"constraints": {"weekly_hours_ceiling": 8}},
+           "target_times_sec": {"total": [8110, 7470, 6895]}}, 2, "primera cursa")])})
+    goal = _goals(conn, date(2026, 9, 14))[0]
+    assert "athlete_context" not in goal
+    assert goal["target_times_sec"]["total"][1] == 7470 and goal["notes"] == "primera cursa"
+
+
+def test_athlete_without_profile_has_no_profile_keys():
+    from coach.context import _athlete
+
+    row = ATHLETE_ROW[:-1] + ({},)
+    athlete = _athlete(_Conn(by_table={"from athlete where": (ATHLETE_COLS, [row])}))
+    assert "constraints" not in athlete and "notes" not in athlete

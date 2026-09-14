@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, StyleSheet, TextInput, TouchableOpacity, View
 
 import { ThemedText } from '@/components/themed-text';
 import { Goal, GoalInput, abandonGoal, upsertGoal } from '@/lib/api';
+import { formatClock, parseClock } from '@/lib/format';
 
 // Alta i edició d'un objectiu. El perfil (distàncies per segment) es construeix
 // com el de Fornells (profile.segments) perquè el coach i el validador (R13)
@@ -28,6 +29,17 @@ function segmentOf(goal: Goal | undefined, sport: string): number | null {
 const km = (m: number | null) => (m == null ? '' : String(m / 1000));
 const meters = (m: number | null) => (m == null ? '' : String(m));
 
+// Temps objectiu: profile.target_times_sec.{clau} és [prudent, objectiu, gran dia];
+// l'app només edita l'objectiu (índex 1, el que llegeixen el coach i R8).
+type Times = Record<string, any>;
+const TIME_KEYS = ['swim', 'bike', 'run'] as const;
+function targetOf(goal: Goal | undefined, key: string): string {
+  const arr = goal?.profile?.target_times_sec?.[key];
+  const sec = Array.isArray(arr) ? arr[1] : null;
+  return sec == null ? '' : formatClock(sec);
+}
+const mid = (t: Times, key: string): number | null => (Array.isArray(t[key]) && t[key][1] != null ? Number(t[key][1]) : null);
+
 export default function GoalForm({ goal, onDone, onCancel }: Props) {
   const [name, setName] = useState(goal?.name ?? '');
   const [discipline, setDiscipline] = useState<Goal['discipline']>(goal?.discipline ?? 'triathlon');
@@ -37,11 +49,18 @@ export default function GoalForm({ goal, onDone, onCancel }: Props) {
   const [bikeKm, setBikeKm] = useState(km(segmentOf(goal, 'bike')));
   const [runKm, setRunKm] = useState(km(segmentOf(goal, 'run')));
   const [notes, setNotes] = useState(goal?.notes ?? '');
+  const [times, setTimes] = useState<Record<string, string>>({
+    swim: targetOf(goal, 'swim'), bike: targetOf(goal, 'bike'), run: targetOf(goal, 'run'), total: targetOf(goal, 'total'),
+  });
+  const [days, setDays] = useState(goal?.profile?.days == null ? '' : String(goal.profile.days));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const dateOk = date === '' || ISO_DAY.test(date);
-  const canSave = name.trim() !== '' && dateOk && !busy;
+  const timeKeys = discipline === 'triathlon' ? TIME_KEYS : (['total'] as const);
+  const timesOk = timeKeys.every((k) => times[k].trim() === '' || parseClock(times[k]) != null);
+  const canSave = name.trim() !== '' && dateOk && timesOk && !busy;
+  const setTime = (k: string) => (v: string) => setTimes((prev) => ({ ...prev, [k]: v }));
 
   const buildSegments = () => {
     const num = (v: string) => (v.trim() === '' ? null : Number(v));
@@ -63,10 +82,41 @@ export default function GoalForm({ goal, onDone, onCancel }: Props) {
     return segs;
   };
 
+  // Només es reescriu una clau si el text ha canviat respecte del preomplert:
+  // un objectiu amb tres escenaris (Fornells) no en perd cap per obrir i desar.
+  const buildTimes = (): Times | undefined => {
+    const prev: Times = goal?.profile?.target_times_sec ?? {};
+    const out: Times = { ...prev };
+    let changed = false;
+    for (const k of timeKeys) {
+      const text = times[k].trim();
+      if (text === targetOf(goal, k)) continue;
+      changed = true;
+      if (text === '') delete out[k];
+      else out[k] = [null, parseClock(text), null];
+    }
+    if (!changed) return Object.keys(out).length ? out : undefined;
+    if (discipline === 'triathlon') {
+      const parts = ['swim', 't1', 'bike', 't2', 'run'].map((k) => mid(out, k));
+      const sum = parts.reduce((acc: number, v) => acc + (v ?? 0), 0);
+      if (parts.some((v) => v != null)) out.total = [null, sum, null];
+      else delete out.total;
+    }
+    return Object.keys(out).length ? out : undefined;
+  };
+
   const save = async () => {
     setBusy(true);
     setError(null);
     try {
+      const profile: Record<string, any> = { ...(goal?.profile ?? {}), segments: buildSegments() };
+      delete profile.target_times_sec;
+      delete profile.days;
+      const targetTimes = buildTimes();
+      if (targetTimes) profile.target_times_sec = targetTimes;
+      if (discipline === 'ultra_endurance' && days.trim() !== '' && Number.isFinite(Number(days)) && Number(days) > 0) {
+        profile.days = Math.round(Number(days));
+      }
       const input: GoalInput = {
         ...(goal ? { id: goal.id } : {}),
         name: name.trim(),
@@ -74,7 +124,7 @@ export default function GoalForm({ goal, onDone, onCancel }: Props) {
         event_date: date === '' ? null : date,
         priority,
         notes: notes.trim() || null,
-        profile: { ...(goal?.profile ?? {}), segments: buildSegments() },
+        profile,
       };
       await upsertGoal(input);
       setBusy(false);
@@ -138,6 +188,18 @@ export default function GoalForm({ goal, onDone, onCancel }: Props) {
       ) : (
         <Field label="Distància (km)" value={runKm} onChange={setRunKm} />
       )}
+      {discipline === 'triathlon' ? (
+        <View style={styles.row}>
+          <Field label="Natació (h:mm:ss)" value={times.swim} onChange={setTime('swim')} keyboard="numbers-and-punctuation" />
+          <Field label="Bici (h:mm:ss)" value={times.bike} onChange={setTime('bike')} keyboard="numbers-and-punctuation" />
+          <Field label="Córrer (h:mm:ss)" value={times.run} onChange={setTime('run')} keyboard="numbers-and-punctuation" />
+        </View>
+      ) : discipline === 'ultra_endurance' ? (
+        <Field label="Dies" value={days} onChange={setDays} keyboard="numeric" placeholder="en quants dies" />
+      ) : (
+        <Field label="Temps objectiu (h:mm:ss)" value={times.total} onChange={setTime('total')} keyboard="numbers-and-punctuation" placeholder="36:30" />
+      )}
+      {!timesOk && <ThemedText style={styles.error}>Temps en format h:mm:ss o mm:ss.</ThemedText>}
       <Field label="Notes" value={notes} onChange={setNotes} multiline placeholder="Per al coach: context, límits, què vols" />
       {error && <ThemedText style={styles.error}>{error}</ThemedText>}
       <View style={styles.row}>

@@ -2,6 +2,34 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-14 — S2b: el perfil de l'atleta surt de l'objectiu; temps objectiu; R15
+
+Tot el que el coach sabia de l'atleta que no ve de Garmin (dia de descans fix,
+sostre d'hores, piscina, genoll, marca dels 10 km) vivia a
+`goal.profile.athlete_context` de Fornells, copiat pel seed: en completar la
+cursa el 28/09 hauria desaparegut del context (només entren objectius
+actius), i l'app no ho podia editar. Decisions: (1) columna `athlete.profile`
+(jsonb) amb el mateix contingut; la migració 0013 hi mou l'`athlete_context`
+i l'esborra de l'objectiu (una sola font de veritat); el seed ja no el fusiona
+a l'objectiu sinó que actualitza l'atleta. (2) El context desplega el perfil
+dins d'`athlete` (`athlete.constraints`, `athlete.health`, `athlete.notes`…),
+que és com els prompts el citen. (3) Regla R15 "disponibilitat declarada":
+sostre d'hores, dia de descans fix i dies disponibles, només avisos i només
+setmanes no passades — és una negociació amb l'atleta, no fisiologia; el
+macro, en canvi, no pot proposar blocs per sobre del sostre (error a
+`block_errors`). (4) Objectius: temps objectiu editable des de l'app
+(`profile.target_times_sec` amb la forma de sempre, `[prudent, objectiu,
+gran dia]`, entrant només l'objectiu), dies per a ultra (`profile.days`), i
+les notes es mostren. El coach contrasta el temps objectiu amb `test_results`
+i activitats al `rationale`: l'app no prediu cap temps a partir d'hores,
+perquè cap fórmula honesta ho dona. (5) Un A sense data és un objectiu de
+forma: mana si cap A té data (regla de S2), i el prompt del macro li
+planifica cicles base/build sense taper. (6) Pestanya "Jo" a l'app amb el
+perfil, l'interruptor del coach (abans a Objectius) i "Surt" (abans a Avui).
+Ajornat, apuntat: repartiment d'esports per bloc segons l'objectiu del bloc
+(multi-objectiu real) — Roger accepta el comportament actual per al seu cas
+(ultra bici A a l'estiu + 10 km B a l'hivern).
+
 ## 2026-09-14 — S3: el macro (blocs) el proposa el coach amb Opus; l'atleta l'aprova
 
 Els blocs de Fornells acaben el 27/09 i després no hi ha on escriure. El

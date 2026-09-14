@@ -114,10 +114,11 @@ def plan_from_db(conn, today: date | None = None
                                         from daily_metric where local_date >= %s""",
                                      (min(plan_start, since),))]
     a = conn.execute("""select name, max_hr, ftp_watts, css_sec_per_100m,
-                        threshold_pace_sec_km from athlete where id=1""").fetchone()
+                        threshold_pace_sec_km, profile from athlete where id=1""").fetchone()
     athlete = Athlete(name=a[0], max_hr=a[1], ftp_watts=a[2],
                       css_sec_per_100m=float(a[3]) if a[3] else None,
-                      threshold_pace_sec_km=float(a[4]) if a[4] else None)
+                      threshold_pace_sec_km=float(a[4]) if a[4] else None,
+                      profile=a[5] or {})
     history = History(weekly_hours=weekly, daily_metrics=metrics, long_by_week=long_by_week)
     # les sessions d'un bloc cancel·lat el conserven (block=...), però el bloc
     # no compta per situar-hi res de nou
@@ -145,7 +146,7 @@ def main() -> None:
     names = ", ".join(g.name for g in goals) or "sense objectiu actiu"
     print(f"pla '{names}': {len(plan)} sessions validades (referència {reference})")
     if not violations:
-        print("CAP VIOLACIÓ: el pla passa les 14 regles.")
+        print("CAP VIOLACIÓ: el pla passa les 15 regles.")
         return
     for v in violations:
         print(f"  {v.rule} [{v.severity}]: {v.message}")

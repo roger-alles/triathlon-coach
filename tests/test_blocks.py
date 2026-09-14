@@ -173,3 +173,15 @@ def test_cancel_records_previous_status_and_undo_restores_it():
     conn2 = DbConn({})
     undo_block_effects(conn2, effects)
     assert conn2.sql("set status=%s")[0][1] == ("active", 8)
+
+
+def test_a_block_above_the_athletes_declared_ceiling_is_an_error():
+    from coach.models import Athlete
+    athlete = Athlete(name="Roger", profile={"constraints": {"weekly_hours_ceiling": 8}})
+    base = add("base", RACE + timedelta(days=22), RACE + timedelta(days=49), 9.0, "Base")
+    errs = block_errors([recovery(), base], BLOCKS, [FORNELLS], REAL, TODAY, athlete=athlete)
+    assert any("sostre de 8" in e for e in errs)
+    ok = add("base", RACE + timedelta(days=22), RACE + timedelta(days=49), 3.4, "Base")
+    assert block_errors([recovery(), ok], BLOCKS, [FORNELLS], REAL, TODAY, athlete=athlete) == []
+    # sense perfil, res no canvia
+    assert not any("sostre" in e for e in block_errors([recovery(), base], BLOCKS, [FORNELLS], REAL, TODAY))

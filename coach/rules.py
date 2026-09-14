@@ -1,4 +1,4 @@
-"""Les 14 regles dures del pla (spec §8).
+"""Les 15 regles dures del pla (spec §8).
 
 Cada regla és una funció independent amb el seu test. R1, R3, R5, R8, R11 i
 R14 són bloquejants; la resta, avisos. Les decisions d'interpretació preses
@@ -589,6 +589,45 @@ def r14_integrity(plan: list[Session], athlete: Athlete,
     return out
 
 
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+WEEKDAYS_CA = ("dilluns", "dimarts", "dimecres", "dijous", "divendres", "dissabte", "diumenge")
+
+
+def r15_availability(weeks: list[Week], athlete: Athlete,
+                     reference_date: date | None = None) -> list[Violation]:
+    """R15: el pla respecta el que l'atleta declara de si mateix
+    (athlete.profile.constraints): sostre d'hores setmanals, dia de descans fix
+    i dies disponibles. Avisos, no bloquejos: és una negociació amb l'atleta,
+    no una llei fisiològica. El passat no es jutja."""
+    c = (athlete.profile or {}).get("constraints") or {}
+    ceiling = c.get("weekly_hours_ceiling")
+    rest_day = c.get("fixed_rest_day")
+    available = c.get("available_days") or []
+    if not (ceiling or rest_day or available):
+        return []
+    out = []
+    for wk in weeks:
+        if not wk.full or _is_past_week(wk, reference_date):
+            continue
+        if ceiling and wk.hours > float(ceiling):
+            out.append(Violation("R15", "warning",
+                f"setmana {wk.monday}: {wk.hours} h supera el sostre de {ceiling} h "
+                f"declarat per l'atleta"))
+        for s in wk.sessions:
+            if s.sport == "rest" or s.is_goal_event:
+                continue
+            day = WEEKDAYS[s.local_date.weekday()]
+            if rest_day and day == rest_day:
+                out.append(Violation("R15", "warning",
+                    f"{s.local_date}: '{s.title}' cau en {WEEKDAYS_CA[s.local_date.weekday()]}, "
+                    f"el dia de descans fix de l'atleta"))
+            elif available and day not in available:
+                out.append(Violation("R15", "warning",
+                    f"{s.local_date}: '{s.title}' cau en {WEEKDAYS_CA[s.local_date.weekday()]}, "
+                    f"que l'atleta no té disponible"))
+    return out
+
+
 # ─── punt d'entrada ──────────────────────────────────────────────────
 
 def validate_plan(plan: list[Session], athlete: Athlete, history: History,
@@ -614,4 +653,5 @@ def validate_plan(plan: list[Session], athlete: Athlete, history: History,
     violations += r12_monotony(plan)
     violations += r13_goal_coherence(weeks, goals)
     violations += r14_integrity(plan, athlete, reference_date)
+    violations += r15_availability(weeks, athlete, reference_date)
     return violations

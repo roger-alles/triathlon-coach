@@ -262,7 +262,8 @@ def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
         block_changes = output.get("block_changes") or []
         cycle_blocks = blocks
         if block_changes:
-            errors += block_errors(block_changes, blocks, goals, history, today, plan=active)
+            errors += block_errors(block_changes, blocks, goals, history, today, plan=active,
+                                   athlete=athlete)
             if not errors:
                 cycle_blocks = [b for b in apply_block_changes(blocks, block_changes)
                                 if b.status != "cancelled"]

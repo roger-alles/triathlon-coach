@@ -14,7 +14,7 @@ import json
 import statistics
 from datetime import date, timedelta
 
-from coach.models import Block, Goal, History, Session
+from coach.models import Athlete, Block, Goal, History, Session
 from coach.rules import primary_goal
 
 PHASES = ("base", "build", "peak", "taper", "race", "recovery", "transition")
@@ -40,10 +40,13 @@ def _taper_window(goal: Goal) -> tuple[int, int]:
 
 
 def block_errors(changes: list[dict], blocks: list[Block], goals: list[Goal],
-                 history: History, today: date, plan: list[Session] = ()) -> list[str]:
+                 history: History, today: date, plan: list[Session] = (),
+                 athlete: Athlete | None = None) -> list[str]:
     """Errors de forma i de coherència d'una proposta de blocs. Buida = endavant."""
     errors: list[str] = []
     tomorrow = today + timedelta(days=1)
+    ceiling = (((athlete.profile if athlete else None) or {}).get("constraints") or {}
+               ).get("weekly_hours_ceiling")
     by_id = {b.id: b for b in blocks}
     planned_after = {}
     for s in plan:
@@ -87,6 +90,10 @@ def block_errors(changes: list[dict], blocks: list[Block], goals: list[Goal],
                 errors.append(f"{where}: el bloc no pot començar abans de demà ({tomorrow})")
             if end and end < today:
                 errors.append(f"{where}: end_date {end} ja és passat")
+            hours = nb.get("target_weekly_hours")
+            if ceiling and hours and float(hours) > float(ceiling):
+                errors.append(f"{where}: {hours} h/setmana supera el sostre de {ceiling} h "
+                              f"que l'atleta ha declarat")
         elif action not in ("cancel",):
             errors.append(f"{where}: action '{action}' desconeguda")
     if errors:

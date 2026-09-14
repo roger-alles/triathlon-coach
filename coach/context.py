@@ -44,11 +44,15 @@ def days_until(event_date: date | None, today: date) -> int | None:
 
 def _athlete(conn) -> dict:
     row = conn.execute("""select name, birth_date, max_hr, resting_hr_baseline,
-                          ftp_watts, css_sec_per_100m, threshold_pace_sec_km
+                          ftp_watts, css_sec_per_100m, threshold_pace_sec_km, profile
                           from athlete where id = 1""").fetchone()
     cols = ("name", "birth_date", "max_hr", "resting_hr_baseline", "ftp_watts",
-            "css_sec_per_100m", "threshold_pace_sec_km")
+            "css_sec_per_100m", "threshold_pace_sec_km", "profile")
     athlete = dict(zip(cols, row))
+    # el perfil que l'atleta declara (constraints, health, known, notes…) es
+    # desplega al mateix nivell: el coach el veu com a part de l'atleta
+    profile = athlete.pop("profile") or {}
+    athlete.update(profile)
     athlete["birth_date"] = str(athlete["birth_date"]) if athlete["birth_date"] else None
     missing = [c for c in ("max_hr", "ftp_watts", "css_sec_per_100m",
                            "threshold_pace_sec_km") if athlete[c] is None]
@@ -73,7 +77,6 @@ def _goals(conn, today: date) -> list[dict]:
             "segments": profile.get("segments"),
             "target_times_sec": profile.get("target_times_sec"),
             "emphasis": profile.get("emphasis"),
-            "athlete_context": profile.get("athlete_context"),
             "pacing_rules": profile.get("pacing_rules"),
         })
     return out
