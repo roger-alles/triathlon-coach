@@ -26,6 +26,11 @@ dia, si n'hi ha):
               estat per la suma de durades d'aquests esports. Un sol esport
               -> partial un cop passat el dia.
 
+Vincle explícit: una fila manual (raw.manual = true, registrada des de l'app
+o a mà) que ja porta plan_session_id és la paraula de l'atleta — s'associa a
+aquella sessió encara que sigui d'un altre dia (sessió del dimecres feta el
+dijous), no passa per `match_day` i el seu plan_session_id no es reescriu.
+
 Només es toquen estats gestionats per aquest procés (planned/completed/
 partial/missed): 'moved' i 'cancelled' són decisions del coach o de l'atleta
 i no s'sobreescriuen. Idempotent: recalcular no canvia res si no hi ha dades noves.
@@ -144,9 +149,10 @@ def run_linking(conn, today: date | None = None) -> dict:
                     where superseded_by is null and status = any(%s)""",
                     (list(MANAGED_STATUSES),))]
     activities = [dict(zip(("id", "local_date", "sport", "duration_sec",
-                            "distance_m", "load"), r))
+                            "distance_m", "load", "plan_session_id", "manual"), r))
                   for r in conn.execute("""
-                    select id, local_date, sport, duration_sec, distance_m, load
+                    select id, local_date, sport, duration_sec, distance_m, load,
+                           plan_session_id, coalesce((raw->>'manual')::boolean, false)
                     from activity""")]
 
     by_day_sessions: dict[date, list[dict]] = {}
@@ -156,20 +162,30 @@ def run_linking(conn, today: date | None = None) -> dict:
     for a in activities:
         by_day_activities.setdefault(a["local_date"], []).append(a)
 
+    # Vincles explícits de l'atleta: fora de l'heurística, valen per a qualsevol dia.
+    session_ids = {s["id"] for s in sessions}
+    explicit = {a["id"]: a["plan_session_id"] for a in activities
+                if a.get("manual") and a.get("plan_session_id") in session_ids}
     linked_by_session: dict[int, list[dict]] = {}
+    for a in activities:
+        if a["id"] in explicit:
+            linked_by_session.setdefault(explicit[a["id"]], []).append(a)
+
     n_links = 0
     for day, day_sessions in by_day_sessions.items():
         day_acts = by_day_activities.get(day, [])
-        for act_id, sess_id in match_day(day_sessions, day_acts):
+        free_acts = [a for a in day_acts if a["id"] not in explicit]
+        for act_id, sess_id in match_day(day_sessions, free_acts):
             conn.execute("update activity set plan_session_id = %s where id = %s",
                          (sess_id, act_id))
             activity = next(a for a in day_acts if a["id"] == act_id)
             linked_by_session.setdefault(sess_id, []).append(activity)
             n_links += 1
-        matched_ids = {act_id for act_id, _ in match_day(day_sessions, day_acts)}
+        matched_ids = {act_id for act_id, _ in match_day(day_sessions, free_acts)} | set(explicit)
         for s in day_sessions:
             if s["sport"] in ("brick", "multisport"):
-                linked_by_session[s["id"]] = day_acts
+                own = [a for a in linked_by_session.get(s["id"], []) if a["id"] not in {d["id"] for d in day_acts}]
+                linked_by_session[s["id"]] = day_acts + own
             if s["sport"] == "brick":
                 run_id = brick_run_link(s, day_acts, matched_ids)
                 if run_id is not None:

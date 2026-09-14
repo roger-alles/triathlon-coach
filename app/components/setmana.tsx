@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import LogSession from '@/components/log-session';
 import { ThemedText } from '@/components/themed-text';
 import {
   Activity,
@@ -195,6 +196,14 @@ export default function Setmana() {
                         ))}
                         {s.rationale && <ThemedText style={styles.rationale}>{s.rationale}</ThemedText>}
                       </View>
+                    )}
+                    {day <= today && (
+                      <LogSession
+                        session={s}
+                        dateISO={s.local_date}
+                        logged={new Set(activities.filter((a) => a.plan_session_id === s.id).map((a) => a.sport))}
+                        onSaved={load}
+                      />
                     )}
                   </TouchableOpacity>
                 </View>

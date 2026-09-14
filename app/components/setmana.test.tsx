@@ -4,6 +4,7 @@ jest.mock('@/lib/api', () => ({
   getSessionsForRange: jest.fn(),
   getActivitiesForRange: jest.fn(),
   getBlockForRange: jest.fn(),
+  logManualActivity: jest.fn(),
   localDateISO: () => '2026-08-29',
 }));
 
@@ -12,7 +13,7 @@ jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(
 
 import { render, screen, userEvent } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getActivitiesForRange, getBlockForRange, getSessionsForRange } from '@/lib/api';
+import { getActivitiesForRange, getBlockForRange, getSessionsForRange, logManualActivity } from '@/lib/api';
 import Setmana from './setmana';
 
 const mockSessions = getSessionsForRange as jest.Mock;
@@ -156,4 +157,51 @@ test('un títol llarg salta de línia dins la targeta en lloc d\'empènyer CLAU 
   // El títol ha de poder encongir-se dins la fila (flex: 1); si no, el text
   // no fa wrap i CLAU surt de la targeta.
   expect(screen.getByText('Rodatge suau (canvi del coach)')).toHaveStyle({ flex: 1 });
+});
+
+test('les sessions passades no fetes ofereixen "Ho he fet"; les fetes i les futures, no', async () => {
+  mockSessions.mockResolvedValue([
+    { id: 23, local_date: '2026-08-27', sport: 'bike', title: 'Rodatge ondulat',
+      status: 'completed', duration_sec_target: 4500, priority: 'support' },
+    { id: 24, local_date: '2026-08-27', sport: 'brick', title: 'Primer brick',
+      status: 'missed', duration_sec_target: 600, priority: 'optional' },
+    { id: 26, local_date: '2026-08-28', sport: 'swim', title: 'Test de referència',
+      status: 'partial', duration_sec_target: 2400, priority: 'key' },
+    { id: 30, local_date: '2026-08-29', sport: 'run', title: 'Rodatge suau (canvi del coach)',
+      status: 'planned', duration_sec_target: 2400, priority: 'key' },
+    { id: 31, local_date: '2026-08-30', sport: 'swim', title: 'Primer contacte al mar',
+      status: 'planned', duration_sec_target: 1800, priority: 'key' },
+  ]);
+  mockActivities.mockResolvedValue([
+    { id: 3, local_date: '2026-08-27', sport: 'bike', duration_sec: 9237, distance_m: 67836, avg_hr: 132, plan_session_id: 23 },
+    // la natació parcial del 28 ja té la seva activitat: no cal tornar-la a registrar
+    { id: 4, local_date: '2026-08-28', sport: 'swim', duration_sec: 1500, distance_m: 1000, avg_hr: null, plan_session_id: 26 },
+  ]);
+  await renderSetmana();
+  await screen.findByText(/Dilluns 24/);
+  // brick perdut del 27: sí, com la cursa del brick
+  expect(screen.getByText('Ho he fet · cursa del brick')).toBeOnTheScreen();
+  // la d'avui (29, planned): sí
+  expect(screen.getAllByText('Ho he fet')).toHaveLength(1);
+  // la feta (23), la parcial amb activitat (26) i la de demà (31): no
+  expect(screen.getAllByText(/Ho he fet/)).toHaveLength(2);
+});
+
+test('registrar des de Setmana envia el dia de la sessió i recarrega la setmana', async () => {
+  (logManualActivity as jest.Mock).mockResolvedValue(undefined);
+  mockSessions.mockResolvedValue([
+    { id: 24, local_date: '2026-08-27', sport: 'swim', title: 'Natació perduda',
+      status: 'missed', duration_sec_target: 2400, distance_m_target: 1600, priority: 'key' },
+  ]);
+  mockActivities.mockResolvedValue([]);
+  await renderSetmana();
+  await screen.findByText(/Dilluns 24/);
+  expect(mockSessions).toHaveBeenCalledTimes(1);
+  const user = userEvent.setup();
+  await user.press(screen.getByText('Ho he fet'));
+  expect(screen.getByDisplayValue('2026-08-27')).toBeOnTheScreen();
+  await user.press(screen.getByText('Registra'));
+  await screen.findByText(/Registrada/);
+  expect((logManualActivity as jest.Mock).mock.calls[0][0]).toMatchObject({ local_date: '2026-08-27', plan_session_id: 24 });
+  expect(mockSessions).toHaveBeenCalledTimes(2);
 });

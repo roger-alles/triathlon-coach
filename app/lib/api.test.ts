@@ -236,7 +236,7 @@ test("registrar una sessió sense rellotge: fila manual amb id negatiu, mai una 
   const chain = chainResolving({ data: null, error: null });
   chain.insert = jest.fn(() => chain);
   mockFrom.mockReturnValue(chain);
-  const now = new Date(2026, 8, 10, 18, 42);
+  const now = new Date(2026, 8, 10, 18, 42, 7);
   await logManualActivity(
     {
       local_date: '2026-09-10',
@@ -252,7 +252,7 @@ test("registrar una sessió sense rellotge: fila manual amb id negatiu, mai una 
   );
   expect(mockFrom).toHaveBeenCalledWith('activity');
   const row = chain.insert.mock.calls[0][0];
-  expect(row.id).toBe(-202609101842);
+  expect(row.id).toBe(-20260910184207);
   expect(row.id).toBeLessThan(0);
   expect(row.local_date).toBe('2026-09-10');
   expect(row.sport).toBe('swim');
@@ -274,6 +274,31 @@ test('registrar una sessió: els errors de la BD pugen', async () => {
   await expect(
     logManualActivity({ local_date: '2026-09-10', sport: 'run', duration_sec: 600 })
   ).rejects.toThrow('row-level security');
+});
+
+test('dos trams registrats al mateix minut tenen ids diferents (segons)', async () => {
+  const chain = chainResolving({ error: null });
+  chain.insert = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  await logManualActivity({ local_date: '2026-09-12', sport: 'swim', duration_sec: 1110 }, new Date(2026, 8, 12, 12, 40, 5));
+  await logManualActivity({ local_date: '2026-09-12', sport: 'bike', duration_sec: 4031 }, new Date(2026, 8, 12, 12, 40, 9));
+  const ids = chain.insert.mock.calls.map((c: any[]) => c[0].id);
+  expect(ids).toEqual([-20260912124005, -20260912124009]);
+});
+
+test("una sessió d'un dia passat porta l'hora d'aquell dia, no d'avui", async () => {
+  const chain = chainResolving({ error: null });
+  chain.insert = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  const now = new Date(2026, 8, 14, 9, 30, 0);
+  await logManualActivity({ local_date: '2026-09-11', sport: 'swim', duration_sec: 2400 }, now);
+  const row = chain.insert.mock.calls[0][0];
+  // migdia local del dia registrat: el sync horari només mira local_date, però
+  // el detall de l'activitat i l'ordre del dia usen start_time
+  expect(new Date(row.start_time)).toEqual(new Date(2026, 8, 11, 12, 0, 0));
+  // el mateix dia, es manté l'hora real (acabada ara)
+  await logManualActivity({ local_date: '2026-09-14', sport: 'run', duration_sec: 600 }, now);
+  expect(new Date(chain.insert.mock.calls[1][0].start_time)).toEqual(new Date(2026, 8, 14, 9, 20, 0));
 });
 
 test('parseLocalISO dona el dia local a mitjanit, no el UTC', () => {

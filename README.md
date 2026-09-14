@@ -56,6 +56,7 @@ make report      # últim informe del coach
   des del 07/09/2026, sense dependre de cap màquina personal.
 - Coach en *dry-run* fins a la cursa. Infraestructura per aplicar propostes amb
   seguretat (transacció única, efectes registrats, desfer) desplegada i inert.
-- Pendent: registrar des de l'app sessions de dies anteriors o multisport (avui
-  només les del dia, via "Ho he fet"), objectius des de l'app, planificació
-  rodant post-cursa.
+- Sessions fetes sense rellotge: "Ho he fet" a Avui i a Setmana (dies
+  anteriors, sessions perdudes, trams d'un triatló), amb el dia real de la
+  sessió; el vinculador respecta la sessió que l'atleta ha triat.
+- Pendent: objectius des de l'app, planificació rodant post-cursa.

@@ -261,14 +261,22 @@ export type ManualActivityInput = {
 };
 
 // Sessió feta sense rellotge (natació a mar, piscina cronometrada). Fila manual
-// amb id negatiu (-AAAAMMDDhhmm): RLS només deixa inserir ids < 0, i el sync
-// horari li posa la càrrega estimada i l'estat de la sessió del pla.
+// amb id negatiu (-AAAAMMDDhhmmss, dia de la sessió + hora del registre amb
+// segons perquè dos trams d'un multisport no xoquin): RLS només deixa inserir
+// ids < 0, i el sync horari li posa la càrrega estimada i l'estat de la sessió
+// del pla. Un dia passat s'apunta al migdia d'aquell dia (l'hora real no es
+// coneix); el dia d'avui, a l'hora real (acabada ara).
 export async function logManualActivity(input: ManualActivityInput, now: Date = new Date()): Promise<void> {
-  const hhmm = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-  const id = -Number(`${input.local_date.replace(/-/g, '')}${hhmm}`);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const hhmmss = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const id = -Number(`${input.local_date.replace(/-/g, '')}${hhmmss}`);
+  const isToday = input.local_date === localDateISO(now);
+  const start = isToday
+    ? new Date(now.getTime() - input.duration_sec * 1000)
+    : new Date(parseLocalISO(input.local_date).setHours(12, 0, 0, 0));
   const row = {
     id,
-    start_time: new Date(now.getTime() - input.duration_sec * 1000).toISOString(),
+    start_time: start.toISOString(),
     local_date: input.local_date,
     sport: input.sport,
     sub_sport: input.sub_sport ?? null,
