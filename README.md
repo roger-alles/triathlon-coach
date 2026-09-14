@@ -59,4 +59,7 @@ make report      # últim informe del coach
 - Sessions fetes sense rellotge: "Ho he fet" a Avui i a Setmana (dies
   anteriors, sessions perdudes, trams d'un triatló), amb el dia real de la
   sessió; el vinculador respecta la sessió que l'atleta ha triat.
-- Pendent: objectius des de l'app, planificació rodant post-cursa.
+- Objectius des de l'app: llista A/B/C, alta, edició i abandonament; l'A més
+  proper governa el pla.
+- Pendent: propostes del coach a l'app (S1b), macro i setmana rodant (S3-S4),
+  multiusuari i TestFlight.

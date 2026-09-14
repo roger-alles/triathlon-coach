@@ -40,7 +40,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="objectius"
         options={{
-          title: 'Fornells',
+          title: 'Objectius',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="flag.checkered" color={color} />,
         }}
       />

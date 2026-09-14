@@ -1,21 +1,29 @@
+jest.mock('@/lib/supabase', () => ({ supabase: {} }));
 jest.mock('@/lib/api', () => ({
-  getActiveGoal: jest.fn(),
+  ...jest.requireActual('@/lib/api'),
+  getGoals: jest.fn(),
   getLogistics: jest.fn(),
   setLogisticsDone: jest.fn(),
+  upsertGoal: jest.fn(),
+  abandonGoal: jest.fn(),
 }));
 
 import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getActiveGoal, getLogistics } from '@/lib/api';
+import { getGoals, getLogistics, upsertGoal } from '@/lib/api';
 import Objectius from './objectius';
 
-const mockGoal = getActiveGoal as jest.Mock;
+const mockGoals = getGoals as jest.Mock;
 const mockLogistics = getLogistics as jest.Mock;
 
 const goal = {
   id: 2,
   name: 'Artiem Half Menorca · Short — Fornells',
+  discipline: 'triathlon',
   event_date: '2026-09-27',
+  priority: 'A',
+  status: 'active',
+  notes: null,
   profile: {
     location: 'Fornells, Menorca',
     start_time: '08:35',
@@ -49,9 +57,14 @@ const renderObjectius = () =>
     </SafeAreaProvider>
   );
 
+const popular = {
+  id: 4, name: '10 km popular', discipline: 'run', event_date: null, priority: 'C', status: 'active',
+  notes: 'quan surti', profile: { segments: [{ sport: 'run', distance_m: 10000 }] },
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
-  mockGoal.mockResolvedValue(goal);
+  mockGoals.mockResolvedValue([goal, popular]);
   mockLogistics.mockResolvedValue([
     { id: 1, local_date: '2026-09-24', title: 'Revisió completa de material', detail: null, blocking: true, done: false },
   ]);
@@ -61,6 +74,8 @@ test('nom, compte enrere i sectors de la cursa', async () => {
   await renderObjectius();
   expect(await screen.findByText(/Artiem Half Menorca/)).toBeOnTheScreen();
   expect(screen.getByText(/dies/)).toBeOnTheScreen();
+  // la data ve de l'objectiu, no d'un text fix
+  expect(screen.getByText(/27\/09\/2026/)).toBeOnTheScreen();
   expect(screen.getByText(/1000 m/)).toBeOnTheScreen();
   expect(screen.getByText(/34 km/)).toBeOnTheScreen();
   expect(screen.getByText(/9 km/)).toBeOnTheScreen();
@@ -94,4 +109,42 @@ test('una tasca de logística es marca com a feta tocant-la, i mostra el detall'
   await user.press(screen.getByText(/Recollida de dorsal/));
   await waitFor(() => expect(setLogisticsDone).toHaveBeenCalledWith(4, true));
   expect(await screen.findByText(/✓ 26\/09/)).toBeOnTheScreen();
+});
+
+test("la llista mostra tots els objectius actius amb prioritat; els sense data ho diuen", async () => {
+  await renderObjectius();
+  expect(await screen.findByText('10 km popular')).toBeOnTheScreen();
+  expect(screen.getByText('C')).toBeOnTheScreen();
+  expect(screen.getByText(/sense data/)).toBeOnTheScreen();
+  // només l'A principal té compte enrere gran
+  expect(screen.getAllByText(/\d+ dies/)).toHaveLength(1);
+});
+
+test('sense cap objectiu: missatge i botó de nou', async () => {
+  mockGoals.mockResolvedValue([]);
+  await renderObjectius();
+  expect(await screen.findByText(/Cap objectiu/)).toBeOnTheScreen();
+  expect(screen.getByText('Nou objectiu')).toBeOnTheScreen();
+});
+
+test('Nou objectiu obre el formulari; desar recarrega la llista', async () => {
+  (upsertGoal as jest.Mock).mockResolvedValue(undefined);
+  await renderObjectius();
+  await screen.findByText(/Artiem/);
+  const user = userEvent.setup();
+  await user.press(screen.getByText('Nou objectiu'));
+  await user.type(screen.getByLabelText('Nom'), 'Mitja de Barcelona');
+  await user.press(screen.getByText('Cursa'));
+  await user.press(screen.getByText('Desa'));
+  await waitFor(() => expect(upsertGoal).toHaveBeenCalledTimes(1));
+  expect(mockGoals).toHaveBeenCalledTimes(2);
+});
+
+test('tocar un objectiu de la llista obre el formulari preomplert', async () => {
+  await renderObjectius();
+  await screen.findByText('10 km popular');
+  const user = userEvent.setup();
+  await user.press(screen.getByText('10 km popular'));
+  expect(screen.getByDisplayValue('10 km popular')).toBeOnTheScreen();
+  expect(screen.getByText('Abandona')).toBeOnTheScreen();
 });

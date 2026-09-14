@@ -424,3 +424,41 @@ def test_r10_key_session_right_after_race_warns():
                         duration_sec_target=7400, block=b))
     plan.append(easy_session(race_day + timedelta(days=1), priority="key", block=b, hours=0.5))
     assert "R10" in rules_of(run(plan, history_flat(MON), goals=[goal]))
+
+
+# --- S2: diversos objectius, alguns sense data ------------------------------
+
+def test_r13_usa_l_objectiu_A_mes_proper_encara_que_no_sigui_el_primer():
+    from coach.rules import r13_goal_coherence, build_weeks
+    monday = date(2026, 9, 7)
+    block = mk_block(monday, weeks=1)
+    # setmana de corredor (75% córrer, 19% bici, 6% natació): coherent amb un
+    # objectiu 'run'; per a 'triathlon' la natació és massa poca
+    plan = [easy_session(monday + timedelta(days=i), "run", 1.0, block=block) for i in range(3)]
+    plan.append(easy_session(monday + timedelta(days=3), "bike", 0.75, block=block))
+    plan.append(easy_session(monday + timedelta(days=4), "swim", 0.25, block=block))
+    plan.append(rest_session(monday + timedelta(days=6), block))
+    tri_far = Goal(name="Tri 2027", discipline="triathlon", event_date=date(2027, 6, 1), priority="A")
+    run_near = Goal(name="10k", discipline="run", event_date=date(2026, 10, 4), priority="A")
+    weeks = build_weeks(plan)
+    # l'ordre de la llista no ha d'importar: mana l'A amb la data més propera
+    assert r13_goal_coherence(weeks, [tri_far, run_near]) == []
+    assert r13_goal_coherence(weeks, [run_near, tri_far]) == []
+    # i un B/C abans a la llista no desplaça l'A
+    c_tri = Goal(name="Tri C", discipline="triathlon", event_date=None, priority="C")
+    assert r13_goal_coherence(weeks, [c_tri, run_near]) == []
+    # comprovació que el test discrimina: amb el triatló com a primari sí que hi ha R13
+    assert r13_goal_coherence(weeks, [tri_far]) != []
+
+
+def test_un_objectiu_C_sense_data_no_trenca_cap_regla():
+    monday = date(2026, 9, 7)
+    block = mk_block(monday, weeks=2)
+    plan = steady_week(monday, 7.0, block) + steady_week(monday + timedelta(days=7), 7.0, block)
+    fornells = Goal(name="Fornells", discipline="triathlon", event_date=date(2026, 9, 27), priority="A",
+                    profile={"emphasis": {"limiter": "swim", "protect": "run"}})
+    popular = Goal(name="10 km popular", discipline="run", event_date=None, priority="C")
+    with_c = run(plan, history_flat(monday - timedelta(days=28)), goals=[fornells, popular])
+    without = run(plan, history_flat(monday - timedelta(days=28)), goals=[fornells])
+    # el C sense data no afegeix ni treu cap violació
+    assert rules_of(with_c) == rules_of(without)
