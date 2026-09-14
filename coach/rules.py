@@ -488,8 +488,19 @@ def r12_monotony(plan: list[Session]) -> list[Violation]:
     return []
 
 
+def primary_goal(goals: list[Goal]) -> Goal | None:
+    """L'objectiu que governa el pla: l'A amb la data més propera; si cap A té
+    data, el primer A; si no hi ha cap A, el primer amb disciplina coneguda."""
+    known = [g for g in goals if g.discipline in DISCIPLINE_SHARES]
+    a_dated = sorted((g for g in known if g.priority == "A" and g.event_date),
+                     key=lambda g: g.event_date)
+    if a_dated:
+        return a_dated[0]
+    return next((g for g in known if g.priority == "A"), None) or (known[0] if known else None)
+
+
 def r13_goal_coherence(weeks: list[Week], goals: list[Goal]) -> list[Violation]:
-    goal = next((g for g in goals if g.discipline in DISCIPLINE_SHARES), None)
+    goal = primary_goal(goals)
     if goal is None:
         return []
     out = []

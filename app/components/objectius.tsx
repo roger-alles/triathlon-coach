@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import GoalForm from '@/components/goal-form';
 import { ThemedText } from '@/components/themed-text';
-import { Goal, LogisticsTask, getActiveGoal, getLogistics, setLogisticsDone } from '@/lib/api';
+import { Goal, LogisticsTask, getGoals, getLogistics, setLogisticsDone } from '@/lib/api';
 import { daysUntil, formatClock, sportLabel } from '@/lib/format';
 
 const SCENARIOS = ['Prudent', 'Objectiu', 'Gran dia'];
@@ -16,11 +17,20 @@ const TIME_ROWS: [string, string][] = [
   ['total', 'Total'],
 ];
 
-export default function Objectius() {
-  const [goal, setGoal] = useState<Goal | null>(null);
-  const [logistics, setLogistics] = useState<LogisticsTask[]>([]);
+// "2026-09-27" -> "27/09/2026"; sense data -> "sense data"
+function shortDate(iso: string | null): string {
+  if (!iso) return 'sense data';
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
 
+export default function Objectius() {
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [logistics, setLogistics] = useState<LogisticsTask[]>([]);
+  const [editing, setEditing] = useState<Goal | 'new' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const insets = useSafeAreaInsets();
 
   const toggleLogistics = async (t: LogisticsTask) => {
     const done = !t.done;
@@ -32,18 +42,25 @@ export default function Objectius() {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
-  const [loading, setLoading] = useState(true);
-  const insets = useSafeAreaInsets();
+
+  const load = useCallback(async () => {
+    try {
+      const gs = await getGoals();
+      setGoals(gs);
+      setLogistics(gs.length > 0 ? await getLogistics(gs[0].id) : []);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    getActiveGoal()
-      .then(async (g) => {
-        setGoal(g);
-        if (g) setLogistics(await getLogistics(g.id));
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoading(false));
-  }, []);
+    // load() només fa setState després d'un await (no és síncron); la regla
+    // del React Compiler no distingeix el codi que hi ha després de l'await.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, [load]);
 
   if (loading) {
     return (
@@ -53,29 +70,54 @@ export default function Objectius() {
     );
   }
 
+  if (editing) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
+        <GoalForm
+          goal={editing === 'new' ? undefined : editing}
+          onDone={() => { setEditing(null); load(); }}
+          onCancel={() => setEditing(null)}
+        />
+      </ScrollView>
+    );
+  }
+
+  const goal = goals[0] ?? null;
+  const others = goals.slice(1);
+  const newButton = (
+    <TouchableOpacity style={styles.newButton} onPress={() => setEditing('new')}>
+      <ThemedText style={styles.newButtonText}>Nou objectiu</ThemedText>
+    </TouchableOpacity>
+  );
+
   if (!goal) {
     return (
-      <View style={styles.center}>
+      <View style={[styles.center, { gap: 12 }]}>
         <ThemedText>{error ?? 'Cap objectiu actiu.'}</ThemedText>
+        {newButton}
       </View>
     );
   }
 
-  const p = goal.profile;
-  const days = daysUntil(goal.event_date);
+  const p = goal.profile ?? {};
+  const days = goal.event_date ? daysUntil(goal.event_date) : null;
   const times = p.target_times_sec ?? {};
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
+      {error && <ThemedText style={styles.error}>{error}</ThemedText>}
       <View style={styles.hero}>
         <ThemedText style={styles.raceName}>{goal.name}</ThemedText>
         <ThemedText style={styles.raceMeta}>
-          {p.location} · 27/09/2026{p.start_time && ` · sortida ${p.start_time}`}
+          {p.location ? `${p.location} · ` : ''}{shortDate(goal.event_date)}{p.start_time && ` · sortida ${p.start_time}`}
         </ThemedText>
-        <ThemedText style={styles.countdown}>{days} dies</ThemedText>
+        {days != null && <ThemedText style={styles.countdown}>{days} dies</ThemedText>}
         {p.first_race_ever && <ThemedText style={styles.firstRace}>La teva primera cursa.</ThemedText>}
+        <TouchableOpacity onPress={() => setEditing(goal)} hitSlop={8}>
+          <ThemedText style={styles.editLink}>Edita</ThemedText>
+        </TouchableOpacity>
       </View>
 
       {Array.isArray(p.segments) && (
@@ -164,6 +206,23 @@ export default function Objectius() {
           </View>
         </>
       )}
+
+      <ThemedText style={styles.sectionTitle}>Altres objectius</ThemedText>
+      <View style={styles.card}>
+        {others.length === 0 && <ThemedText style={styles.emptyOthers}>Cap més. El coach només mira aquest.</ThemedText>}
+        {others.map((g) => (
+          <TouchableOpacity key={g.id} style={styles.goalRow} onPress={() => setEditing(g)}>
+            <ThemedText style={styles.priorityChip}>{g.priority}</ThemedText>
+            <View style={styles.goalBody}>
+              <ThemedText style={styles.goalName}>{g.name}</ThemedText>
+              <ThemedText style={styles.goalMeta}>
+                {sportLabel(g.discipline === 'triathlon' ? 'multisport' : g.discipline)} · {shortDate(g.event_date)}
+              </ThemedText>
+            </View>
+          </TouchableOpacity>
+        ))}
+        {newButton}
+      </View>
     </ScrollView>
   );
 }
@@ -200,4 +259,14 @@ const styles = StyleSheet.create({
   protocolDetail: { fontSize: 13, opacity: 0.7 },
   pacing: { fontSize: 13, lineHeight: 19 },
   pacingKey: { fontSize: 13, fontWeight: '800' },
+  error: { color: '#d64541', textAlign: 'center' },
+  editLink: { fontSize: 13, color: '#3b82c4', fontWeight: '600', marginTop: 2 },
+  emptyOthers: { fontSize: 13, opacity: 0.6 },
+  goalRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  priorityChip: { width: 26, height: 26, lineHeight: 26, borderRadius: 13, textAlign: 'center', fontWeight: '800', backgroundColor: 'rgba(127,127,127,0.15)', overflow: 'hidden' },
+  goalBody: { flex: 1 },
+  goalName: { fontSize: 15, fontWeight: '600' },
+  goalMeta: { fontSize: 13, opacity: 0.7 },
+  newButton: { alignSelf: 'flex-start', marginTop: 4, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#1D3D47' },
+  newButtonText: { color: '#fff', fontWeight: '700' },
 });

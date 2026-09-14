@@ -176,9 +176,42 @@ export async function getFormSeries(sinceISO: string): Promise<FormDay[]> {
 export type Goal = {
   id: number;
   name: string;
-  event_date: string;
+  discipline: 'triathlon' | 'run' | 'bike' | 'swim' | 'ultra_endurance';
+  event_date: string | null;
+  priority: 'A' | 'B' | 'C';
+  status: 'active' | 'completed' | 'abandoned';
+  notes: string | null;
   profile: Record<string, any>;
 };
+
+export type GoalInput = Omit<Goal, 'id' | 'status'> & { id?: number };
+
+const GOAL_COLUMNS = 'id, name, discipline, event_date, priority, status, notes, profile';
+
+// Objectius actius: primer els A amb data (la més propera davant), després els
+// A sense data, i després B i C. És l'ordre que fa servir el coach (primary_goal).
+export async function getGoals(): Promise<Goal[]> {
+  const { data, error } = await supabase.from('goal').select(GOAL_COLUMNS).eq('status', 'active');
+  if (error) throw new Error(error.message);
+  const rank = (g: Goal) => `${g.priority}${g.event_date ? '0' + g.event_date : '1'}`;
+  return ((data ?? []) as Goal[]).sort((a, b) => rank(a).localeCompare(rank(b)));
+}
+
+// Sense id: objectiu nou (la RLS de la 0011 deixa inserir). Amb id: edició.
+export async function upsertGoal(input: GoalInput): Promise<void> {
+  const { id, ...fields } = input;
+  const { error } =
+    id == null
+      ? await supabase.from('goal').insert(fields)
+      : await supabase.from('goal').update(fields).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+// Mai esborrar: blocs i sessions hi pengen. Abandonar = status.
+export async function abandonGoal(id: number): Promise<void> {
+  const { error } = await supabase.from('goal').update({ status: 'abandoned' }).eq('id', id);
+  if (error) throw new Error(error.message);
+}
 
 export type LogisticsTask = {
   id: number;
@@ -192,7 +225,7 @@ export type LogisticsTask = {
 export async function getActiveGoal(): Promise<Goal | null> {
   const { data, error } = await supabase
     .from('goal')
-    .select('id, name, event_date, profile')
+    .select(GOAL_COLUMNS)
     .eq('status', 'active')
     .order('event_date')
     .limit(1)

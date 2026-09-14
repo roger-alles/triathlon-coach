@@ -191,6 +191,41 @@ test("l'objectiu actiu i la seva logística es llegeixen sencers", async () => {
   expect(chain2.eq).toHaveBeenCalledWith('goal_id', 2);
 });
 
+test('getGoals: actius ordenats (A per data, sense data al final, després B i C)', async () => {
+  const { getGoals } = require('./api');
+  const rows = [
+    { id: 3, name: 'Transpirinenca', discipline: 'ultra_endurance', event_date: null, priority: 'A', status: 'active', notes: null, profile: {} },
+    { id: 2, name: 'Fornells', discipline: 'triathlon', event_date: '2026-09-27', priority: 'A', status: 'active', notes: null, profile: {} },
+    { id: 4, name: '10 km popular', discipline: 'run', event_date: null, priority: 'C', status: 'active', notes: null, profile: {} },
+  ];
+  const chain = chainResolving({ data: rows, error: null });
+  mockFrom.mockReturnValue(chain);
+  const goals = await getGoals();
+  expect(chain.eq).toHaveBeenCalledWith('status', 'active');
+  expect(goals.map((g: any) => g.id)).toEqual([2, 3, 4]);
+});
+
+test('upsertGoal: sense id insereix, amb id actualitza; abandonGoal només toca status', async () => {
+  const { upsertGoal, abandonGoal } = require('./api');
+  const chain = chainResolving({ error: null });
+  chain.insert = jest.fn(() => chain);
+  chain.update = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  const input = { name: '10 km popular', discipline: 'run', event_date: null, priority: 'C', notes: 'quan surti',
+                  profile: { segments: [{ sport: 'run', distance_m: 10000 }] } };
+  await upsertGoal(input);
+  expect(chain.insert).toHaveBeenCalledWith(input);
+  expect(chain.update).not.toHaveBeenCalled();
+
+  await upsertGoal({ ...input, id: 4, name: '10 km Bombers' });
+  expect(chain.update).toHaveBeenCalledWith({ ...input, name: '10 km Bombers' });
+  expect(chain.eq).toHaveBeenCalledWith('id', 4);
+
+  await abandonGoal(4);
+  expect(chain.update).toHaveBeenLastCalledWith({ status: 'abandoned' });
+  expect(chain.eq).toHaveBeenLastCalledWith('id', 4);
+});
+
 test("respondre una pregunta del coach fa un INSERT (mai update: és un quadern)", async () => {
   const { sendAnswer } = require('./api');
   const chain = chainResolving({ data: null, error: null });

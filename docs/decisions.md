@@ -2,6 +2,21 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-14 — S2: objectius des de l'app; l'A més proper governa
+
+Primer tall del camí cap a un pla generat pel coach i un segon usuari
+(decisió Roger 14/09: no esperar al 27/09; única congelació fins al 28 és
+`coach_apply_mode = dry_run`). L'atleta crea, edita i abandona objectius des
+de la pestanya Objectius (abans "Fornells", un sol objectiu i la data
+escrita al codi). Decisions: (1) `goal` mai s'esborra, s'abandona (blocs i
+sessions hi pengen); (2) el perfil que escriu l'app és `profile.segments`
+amb la mateixa forma que el de Fornells, i en editar es conserva la resta del
+perfil (temps objectiu, protocol) que l'app no toca; (3) l'objectiu que
+governa el pla és l'**A amb data més propera** (`rules.primary_goal`), no el
+primer de la llista: R13 i, més endavant, el macro, el fan servir; (4) un
+objectiu sense data (un 10 km "quan surti") és vàlid i no afecta cap regla.
+Migració 0011: només grants i policies d'escriptura sobre `goal`.
+
 ## 2026-09-14 — "Ho he fet" des de Setmana; el vincle explícit de l'atleta mana
 
 Tres natacions en una setmana registrades per xat perquè el botó només sortia a
