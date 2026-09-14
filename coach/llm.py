@@ -26,7 +26,7 @@ DEFAULT_MODEL = "claude-sonnet-5"
 # pressupost amb la resposta: curt de tokens = JSON tallat a mitges. El
 # setmanal del 06/09 en va gastar 14.9k amb un sostre de 16k; per sobre de 16k
 # l'SDK exigeix streaming (no costa res si no s'usa).
-MAX_TOKENS = {"daily": 16000, "weekly": 64000}
+MAX_TOKENS = {"daily": 16000, "weekly": 64000, "macro": 64000}
 STREAM_ABOVE = 16000
 
 

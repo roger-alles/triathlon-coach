@@ -23,6 +23,7 @@ class Goal:
     event_date: date | None
     priority: str
     profile: dict = field(default_factory=dict)
+    id: int | None = None
 
 
 @dataclass
@@ -34,6 +35,10 @@ class Block:
     target_weekly_hours: float | None = None
     return_from_layoff: bool = False
     goal_id: int | None = None
+    status: str = "active"
+    name: str | None = None
+    intent: str | None = None
+    fallback: str | None = None
 
     def covers(self, d: date) -> bool:
         return self.start_date <= d <= self.end_date

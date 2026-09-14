@@ -13,8 +13,10 @@ const proposal = {
   id: 27,
   createdAt: '2026-09-10T19:32:04Z',
   reportType: 'daily',
+  scope: 'sessions' as const,
   status: 'proposed' as const,
   classification: { auto: false, reasons: ['toca una sessió clau'] },
+  blockChanges: [],
   changes: [
     { plan_session_id: 43, action: 'move' as const, new_date: '2026-09-11', reason: 'no es pot saltar' },
     { plan_session_id: 44, action: 'modify' as const, reason: 'guardar cames', new_session: { sport: 'run', title: 'Rodatge 25 min', duration_sec_target: 1500 } },
@@ -84,4 +86,23 @@ test('decisió en curs: "Aplicant…" i sense botons; fallida: error i botons de
 test('una sessió que no es troba surt pel seu id, no peta', async () => {
   await render(<ProposalCard proposal={{ ...proposal, changes: [{ plan_session_id: 99, action: 'cancel', reason: 'x' }] }} sessions={new Map()} applyMode="hybrid" onDecide={jest.fn()} />);
   expect(screen.getByText(/Sessió #99/)).toBeOnTheScreen();
+});
+
+test('un macro pinta els blocs: nou, modificat i cancel·lat, amb la raó', async () => {
+  const macro = {
+    ...proposal, id: 40, reportType: 'macro', scope: 'macro' as const, changes: [],
+    blockChanges: [
+      { action: 'add' as const, reason: 'cal descansar', new_block: { phase: 'recovery', name: 'Recuperació', start_date: '2026-09-28', end_date: '2026-10-18', target_weekly_hours: 3 } },
+      { action: 'modify' as const, block_id: 8, reason: 'menys hores', new_block: { target_weekly_hours: 3 } },
+      { action: 'cancel' as const, block_id: 7, reason: 'sobra' },
+    ],
+  };
+  const blocks = new Map([[8, { id: 8, name: 'Afinada', phase: 'taper' }], [7, { id: 7, name: 'Setmana 3', phase: 'peak' }]]);
+  await render(<ProposalCard proposal={macro} sessions={sessions} blocks={blocks} applyMode="hybrid" onDecide={jest.fn()} />);
+  expect(screen.getByText(/Proposta del coach · macro/)).toBeOnTheScreen();
+  expect(screen.getByText(/\+ Recuperació · 28\/09 – 18\/10 · 3 h\/set/)).toBeOnTheScreen();
+  expect(screen.getByText(/~ Afinada · 3 h\/set/)).toBeOnTheScreen();
+  expect(screen.getByText(/× Setmana 3/)).toBeOnTheScreen();
+  expect(screen.getByText(/cal descansar/)).toBeOnTheScreen();
+  expect(screen.getByText('Aplica')).toBeOnTheScreen();
 });

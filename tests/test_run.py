@@ -168,7 +168,7 @@ def test_main_holds_no_db_connection_while_the_model_thinks(monkeypatch):
                         lambda conn, today, report_for=None: {"today": str(today)})
     monkeypatch.setattr(run, "plan_from_db", lambda conn, today=None: ([], [], None, None, []))
     monkeypatch.setattr(run, "coach_cycle", fake_cycle)
-    monkeypatch.setattr(run, "CoachLLM", lambda: None)
+    monkeypatch.setattr(run, "CoachLLM", lambda model=None: None)
     monkeypatch.setattr(run, "load_prompt", lambda name: "prompt")
     monkeypatch.setattr(run, "apply_mode", lambda conn: "dry_run")
     monkeypatch.setattr(run, "write_report", lambda *a, **kw: written.append((a, kw)) or 1)
@@ -475,3 +475,81 @@ def test_preexisting_blocking_violation_becomes_a_warning_not_a_rejection():
                          athlete=ATHLETE, history=real, goals=[], today=MON, report_type="daily")
     assert result["accepted"] is False
     assert any("R1" in e for e in result["validation_errors"][0])
+
+
+# ─── S3: macro (block_changes) ───────────────────────────────────────
+
+def _macro_output(block_changes):
+    return {"schema_version": "1.3", "report_type": "macro", "session_changes": [],
+            "block_changes": block_changes, "readiness": {"verdict": "green", "drivers": [], "confidence": "high"},
+            "summary": "s", "rationale": "r", "flags": [], "questions_for_athlete": []}
+
+
+def test_cycle_validates_block_changes_and_feeds_errors_back():
+    race = MON + timedelta(days=13)   # diumenge
+    goal = __import__("coach.models", fromlist=["Goal"]).Goal(
+        name="Cursa", discipline="run", event_date=race, priority="A", id=2)
+    taper = Block(id=9, phase="taper", start_date=race - timedelta(days=6), end_date=race, target_weekly_hours=2)
+    bad = _macro_output([{"action": "add", "reason": "x", "new_block": {
+        "phase": "recovery", "name": "Rec", "start_date": (race + timedelta(days=3)).isoformat(),
+        "end_date": (race + timedelta(days=14)).isoformat(), "target_weekly_hours": 1.5}}])
+    good = _macro_output([{"action": "add", "reason": "x", "new_block": {
+        "phase": "recovery", "name": "Rec", "start_date": (race + timedelta(days=1)).isoformat(),
+        "end_date": (race + timedelta(days=14)).isoformat(), "target_weekly_hours": 1.5}}])
+    llm = FakeLLM([bad, good])
+    result = coach_cycle(llm=llm, system="", context_json="{}", plan=make_plan(), athlete=ATHLETE,
+                         history=History(), goals=[goal], today=MON, report_type="macro",
+                         blocks=[_block(), taper])
+    assert result["accepted"] is True and llm.calls == 2
+    assert any("recovery" in e for e in result["validation_errors"][0])
+
+
+def test_write_report_macro_window_runs_from_tomorrow_to_the_race():
+    conn = DbConn({})
+    result = {"output": _macro_output([]), "accepted": True,
+              "usage": {"model": "m", "input_tokens": 1, "output_tokens": 1},
+              "validation_errors": [], "warnings": []}
+    write_report(conn, "macro", {}, result, MON, proposal_status="proposed", scope="macro",
+                 window_end=MON + timedelta(days=13))
+    params = conn.sql("insert into coach_report (")[0][1]
+    assert params[0] == "macro" and params[1] == MON + timedelta(days=1) and params[2] == MON + timedelta(days=13)
+    assert params[10] == "proposed" and params[11] == "macro"
+
+
+def test_run_report_macro_uses_opus_the_macro_prompt_and_is_always_a_proposal(monkeypatch):
+    import coach.run as run
+    calls = {}
+
+    class FakeConn:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def transaction(self): return self
+
+    monkeypatch.setattr(run.psycopg, "connect", lambda url: FakeConn())
+    monkeypatch.setattr(run, "build_context", lambda conn, today, report_for=None: {"today": str(today)})
+    monkeypatch.setattr(run, "plan_from_db", lambda conn, today=None: (make_plan(), [], History(), ATHLETE, [_block()]))
+    monkeypatch.setattr(run, "apply_mode", lambda conn: "hybrid")
+    def fake_llm(model=None):
+        calls["model"] = model
+        return None
+    def fake_prompt(name):
+        calls["prompt"] = name
+        return "prompt"
+    def fake_cycle(**kw):
+        calls["cycle"] = kw
+        return {"accepted": True, "output": _macro_output([]),
+                "usage": {"model": "m", "input_tokens": 1, "output_tokens": 1},
+                "validation_errors": [], "warnings": []}
+    def fake_write(*a, **kw):
+        calls["write"] = kw
+        return 42
+    monkeypatch.setattr(run, "CoachLLM", fake_llm)
+    monkeypatch.setattr(run, "load_prompt", fake_prompt)
+    monkeypatch.setattr(run, "coach_cycle", fake_cycle)
+    monkeypatch.setattr(run, "write_report", fake_write)
+    monkeypatch.setenv("COACH_MODEL_MACRO", "claude-opus-5")
+    report_id = run.run_report("macro", url="postgres://x", today=MON)
+    assert report_id == 42
+    assert calls["model"] == "claude-opus-5" and calls["prompt"] == "macro-v1"
+    assert calls["cycle"]["report_type"] == "macro"
+    assert calls["write"]["proposal_status"] == "proposed" and calls["write"]["scope"] == "macro"

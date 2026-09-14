@@ -171,6 +171,74 @@
       "items": {
         "type": "string"
       }
+    },
+    "block_changes": {
+      "type": "array",
+      "description": "Només al macro (i, excepcionalment, al setmanal): canvis als blocs del pla. Mai sessions.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action",
+          "reason"
+        ],
+        "properties": {
+          "action": {
+            "enum": [
+              "add",
+              "modify",
+              "cancel"
+            ]
+          },
+          "block_id": {
+            "type": "integer",
+            "description": "Bloc existent; obligatori per a modify/cancel"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "new_block": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "Obligatori per a add (complet); per a modify, només els camps que canvien",
+            "properties": {
+              "phase": {
+                "enum": [
+                  "base",
+                  "build",
+                  "peak",
+                  "taper",
+                  "race",
+                  "recovery",
+                  "transition"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "start_date": {
+                "type": "string",
+                "description": "YYYY-MM-DD"
+              },
+              "end_date": {
+                "type": "string",
+                "description": "YYYY-MM-DD"
+              },
+              "intent": {
+                "type": "string",
+                "description": "què busca el bloc, en una frase"
+              },
+              "target_weekly_hours": {
+                "type": "number"
+              },
+              "fallback": {
+                "type": "string",
+                "description": "si la setmana se't torça, salva X"
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

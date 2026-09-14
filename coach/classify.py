@@ -46,9 +46,11 @@ def _after(session: Session | None, change: dict, blocks) -> Session | None:
 
 
 def classify(changes: list[dict], plan_by_id: dict[int, Session], today: date,
-             blocking: list[Violation], blocks=None) -> Classification:
+             blocking: list[Violation], blocks=None, block_changes=()) -> Classification:
     affected = [c for c in changes if c["action"] != "keep"]
     reasons = [f"{v.rule}: {v.message}" for v in blocking]
+    if block_changes:
+        reasons.append(f"canvia blocs del pla ({len(block_changes)}): un macro no és automàtic")
     horizon = 0
     load_before = load_after = hard_before = hard_after = 0.0
 

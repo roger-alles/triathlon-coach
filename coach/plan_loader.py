@@ -69,16 +69,18 @@ def plan_from_db(conn, today: date | None = None
     """
     today = today or date.today()
     goals = [Goal(name=g[0], discipline=g[1], event_date=g[2], priority=g[3],
-                  profile=g[4] or {})
-             for g in conn.execute("""select name, discipline, event_date, priority, profile
+                  profile=g[4] or {}, id=g[5])
+             for g in conn.execute("""select name, discipline, event_date, priority, profile, id
                                       from goal where status='active'
                                       order by priority, event_date""")]
 
     blocks = {r[0]: Block(id=r[0], phase=r[1], start_date=r[2], end_date=r[3],
                           target_weekly_hours=float(r[4]) if r[4] else None,
-                          return_from_layoff=r[5], goal_id=r[6])
+                          return_from_layoff=r[5], goal_id=r[6], status=r[7],
+                          name=r[8], intent=r[9], fallback=r[10])
               for r in conn.execute("""select id, phase, start_date, end_date,
-                                       target_weekly_hours, return_from_layoff, goal_id
+                                       target_weekly_hours, return_from_layoff, goal_id,
+                                       status, name, intent, fallback
                                        from plan_block order by start_date""")}
     plan = [Session(local_date=r[0], sport=r[1], session_type=r[2], title=r[3],
                     structure=r[4], block=blocks.get(r[5]),
@@ -117,7 +119,10 @@ def plan_from_db(conn, today: date | None = None
                       css_sec_per_100m=float(a[3]) if a[3] else None,
                       threshold_pace_sec_km=float(a[4]) if a[4] else None)
     history = History(weekly_hours=weekly, daily_metrics=metrics, long_by_week=long_by_week)
-    return plan, goals, history, athlete, list(blocks.values())
+    # les sessions d'un bloc cancel·lat el conserven (block=...), però el bloc
+    # no compta per situar-hi res de nou
+    live_blocks = [b for b in blocks.values() if b.status != "cancelled"]
+    return plan, goals, history, athlete, live_blocks
 
 
 def main() -> None:

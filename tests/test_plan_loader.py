@@ -93,10 +93,11 @@ class _DbConn:
 
 def test_plan_from_db_returns_all_active_goals_as_a_list():
     from coach.plan_loader import plan_from_db
-    conn = _DbConn([("Fornells", "triathlon", date(2026, 9, 27), "A", {}),
-                    ("Transpirinenca", "ultra_endurance", date(2027, 7, 15), "A", None)])
+    conn = _DbConn([("Fornells", "triathlon", date(2026, 9, 27), "A", {}, 2),
+                    ("Transpirinenca", "ultra_endurance", date(2027, 7, 15), "A", None, 3)])
     plan, goals, history, athlete, blocks = plan_from_db(conn)
     assert [g.name for g in goals] == ["Fornells", "Transpirinenca"]
+    assert [g.id for g in goals] == [2, 3]
     assert goals[1].profile == {}
     assert athlete.name == "Roger"
 
@@ -116,15 +117,18 @@ def test_plan_from_db_returns_blocks_with_goal_and_real_history_up_to_today():
     from coach.plan_loader import plan_from_db
     today = date(2026, 9, 14)   # dilluns
     conn = _DbConn(
-        [("Fornells", "triathlon", date(2026, 9, 27), "A", {})],
-        blocks=[(6, "peak", date(2026, 9, 7), date(2026, 9, 20), 7.5, False, 2),
-                (7, "recovery", date(2026, 9, 28), date(2026, 10, 18), 4.0, False, 2)],
+        [("Fornells", "triathlon", date(2026, 9, 27), "A", {}, 2)],
+        blocks=[(6, "peak", date(2026, 9, 7), date(2026, 9, 20), 7.5, False, 2, "active", "Pic", "tot a ritme", "les claus"),
+                (7, "recovery", date(2026, 9, 28), date(2026, 10, 18), 4.0, False, 2, "active", "Recuperació", None, None),
+                (8, "build", date(2026, 10, 19), date(2026, 11, 8), 6.0, False, 2, "cancelled", "Vell", None, None)],
         weekly=[(date(2026, 8, 31), 5.2), (date(2026, 9, 7), 6.1)],
         longs=[(date(2026, 9, 7), "bike", 4432.0), (date(2026, 9, 7), "run", 827.0)],
     )
     plan, goals, history, athlete, blocks = plan_from_db(conn, today=today)
+    # els cancel·lats no compten; els actius porten nom, status i textos
     assert [b.id for b in blocks] == [6, 7]
     assert blocks[1].goal_id == 2 and blocks[1].phase == "recovery"
+    assert blocks[0].name == "Pic" and blocks[0].intent == "tot a ritme" and blocks[0].status == "active"
     assert history.weekly_hours == {date(2026, 8, 31): 5.2, date(2026, 9, 7): 6.1}
     assert history.long_by_week == {date(2026, 9, 7): {"bike": 4432.0, "run": 827.0}}
     # la finestra d'història acaba al dilluns d'avui i comença 8 setmanes abans

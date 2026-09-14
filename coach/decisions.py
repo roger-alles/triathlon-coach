@@ -31,14 +31,15 @@ from pathlib import Path
 import psycopg
 from dotenv import load_dotenv
 
+from coach.blocks import apply_blocks_to_db, block_errors, undo_block_effects
 from coach.plan_loader import plan_from_db
-from coach.rules import validate_plan
+from coach.rules import primary_goal, validate_plan
 from coach.run import (StaleProposal, apply_changes, apply_to_db, blocking_signatures,
-                       semantic_errors)
+                       run_report, semantic_errors)
 
 ROOT = Path(__file__).parent.parent
 EFFECT_COLS = ("report_id", "kind", "session_id", "new_session_id",
-               "prev_status", "prev_superseded_by")
+               "prev_status", "prev_superseded_by", "block_id", "prev_values")
 
 
 def _fail(conn, decision_id: int, reason: str) -> str:
@@ -65,6 +66,13 @@ def undo_blockers(conn, effects: list[dict]) -> list[str]:
     """Motius pels quals NO es pot desfer (llista buida = endavant)."""
     reasons = []
     for e in effects:
+        if e["kind"] == "block_created":
+            n = conn.execute("""select count(*) from plan_session where block_id=%s
+                                and status='planned' and superseded_by is null""",
+                             (e["block_id"],)).fetchone()
+            if n and n[0]:
+                reasons.append(f"el bloc {e['block_id']} ja té {n[0]} sessions planificades")
+            continue
         if e["kind"] != "created":
             continue
         new_id = e["new_session_id"]
@@ -111,6 +119,8 @@ def _undo(conn, report_id: int) -> list[str]:
             conn.execute("""update plan_session set chained_after=%s
                             where chained_after=%s and superseded_by is null""",
                          (e["session_id"], e["new_session_id"]))
+    # 3) els blocs (macro), en ordre invers
+    undo_block_effects(conn, [e for e in effects if e["kind"].startswith("block_")])
     return []
 
 
@@ -137,12 +147,15 @@ def process_decision(conn, decision: tuple, plan_loader=plan_from_db) -> str:
         if status != "proposed":
             return _fail(conn, decision_id, f"només es pot aplicar una proposta pendent ('proposed'; aquest informe és '{status}')")
         changes = output.get("session_changes", [])
+        block_changes = output.get("block_changes") or []
         plan, goals, history, athlete, blocks = plan_loader(conn)
         active = [s for s in plan if s.status not in ("cancelled", "moved")]
         plan_by_id = {s.id: s for s in active}
+        today = date.today()
         errors = semantic_errors(changes, plan_by_id, athlete, blocks)
+        if not errors and block_changes:
+            errors += block_errors(block_changes, blocks, goals, history, today, plan=active)
         if not errors and active:
-            today = date.today()
             preexisting = blocking_signatures(active, athlete, history, goals, today)
             candidate = apply_changes(active, changes, blocks)
             violations = validate_plan(candidate, athlete, history, goals,
@@ -153,9 +166,14 @@ def process_decision(conn, decision: tuple, plan_loader=plan_from_db) -> str:
         if errors:
             return _fail(conn, decision_id, "la proposta ja no encaixa amb el pla viu: "
                          + "; ".join(errors))
+        goal = primary_goal(goals)
         try:
             with conn.transaction():
                 apply_to_db(conn, report_id, changes, decision_id=decision_id)
+                if block_changes:
+                    apply_blocks_to_db(conn, report_id, block_changes,
+                                       goal_id=goal.id if goal else None,
+                                       decision_id=decision_id)
         except StaleProposal as e:
             return _fail(conn, decision_id, f"proposta caducada: {e}")
         conn.execute("update coach_report set proposal_status='applied' where id=%s", (report_id,))
@@ -171,6 +189,38 @@ def process_decision(conn, decision: tuple, plan_loader=plan_from_db) -> str:
         return _done(conn, decision_id)
 
     return _fail(conn, decision_id, f"decisió desconeguda: {kind}")
+
+
+def _request_fail(conn, request_id: int, reason: str) -> str:
+    conn.execute("update athlete_request set status='failed', error=%s where id=%s",
+                 (reason, request_id))
+    return "failed"
+
+
+def process_request(conn, request: tuple, run_macro, daily_limit: int | None = None) -> str:
+    """Una petició de l'atleta: 'skipped' (ja reclamada), 'answered' o 'failed'.
+    Ara només regenerate_macro; la resta de tipus arriben amb la bústia (S5).
+    MACRO_DAILY_LIMIT (per defecte 1) limita els macros per dia: és la crida cara."""
+    request_id, kind, _payload = request
+    if daily_limit is None:
+        daily_limit = int(os.getenv("MACRO_DAILY_LIMIT", "1"))
+    claimed = conn.execute("""update athlete_request set status='processing'
+                              where id=%s and status='pending' returning id""",
+                           (request_id,)).fetchone()
+    if claimed is None:
+        return "skipped"
+    if kind != "regenerate_macro":
+        return _request_fail(conn, request_id, f"petició '{kind}' encara no suportada")
+    n = conn.execute("""select count(*) from coach_report where report_type='macro'
+                        and created_at::date = current_date""").fetchone()
+    if n and n[0] >= daily_limit:
+        return _request_fail(conn, request_id, f"ja hi ha {n[0]} macro(s) d'avui (límit "
+                                                f"{daily_limit}): descarta'l o aplica'l, i "
+                                                f"demana'n un altre demà")
+    report_id = run_macro()
+    conn.execute("update athlete_request set status='answered', report_id=%s where id=%s",
+                 (report_id, request_id))
+    return "answered"
 
 
 def main() -> None:
@@ -190,8 +240,23 @@ def main() -> None:
                     _fail(conn, decision[0], f"error inesperat: {e}")
                 outcome = "failed"
             print(f"decisió {decision[0]} ({decision[2]} sobre informe {decision[1]}): {outcome}")
-        if not pending:
+        requests = conn.execute("""select id, kind, payload from athlete_request
+                                   where status='pending' order by id""").fetchall()
+        if not pending and not requests:
             print("cap decisió pendent")
+
+    # Les peticions criden el model (1-3 min amb Opus): mai amb una connexió
+    # oberta al pooler. Cada petició obre la seva, i el macro les seves.
+    for request in requests:
+        try:
+            with psycopg.connect(url) as conn:
+                outcome = process_request(conn, request,
+                                          run_macro=lambda: run_report("macro", url=url))
+        except Exception as e:  # noqa: BLE001
+            with psycopg.connect(url) as conn:
+                _request_fail(conn, request[0], f"error inesperat: {e}")
+            outcome = "failed"
+        print(f"petició {request[0]} ({request[1]}): {outcome}")
 
 
 if __name__ == "__main__":

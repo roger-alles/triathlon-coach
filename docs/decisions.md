@@ -2,6 +2,26 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-14 — S3: el macro (blocs) el proposa el coach amb Opus; l'atleta l'aprova
+
+Els blocs de Fornells acaben el 27/09 i després no hi ha on escriure. El
+macro proposa la seqüència de blocs (fase, dates, hores/setmana, intenció,
+fallback) fins a l'objectiu A més proper i la recuperació; mai sessions;
+mai s'aplica sol. Decisions: (1) es dispara des de l'app (`athlete_request`
+`regenerate_macro`, màxim un macro al dia) i el processa el cron
+`decisions`, que obre connexions curtes al voltant de la crida al model
+(1-3 min amb Opus: el pooler mata connexions ocioses). (2) Els blocs tenen
+`status` i mai s'esborren; els efectes de bloc (`block_created`,
+`block_cancelled`, `block_modified` amb `prev_values`) fan el desfer
+simètric al de les sessions. (3) Validació pròpia dels blocs
+(`coach/blocks.py`): no toca el passat, no toca blocs amb sessions
+planificades, cap solapament, taper 7-10 dies acabant a la cursa A curta,
+recovery l'endemà de 7-21 dies i amb menys hores, rampa ≤ 15% entre blocs i
+del primer bloc nou contra les hores reals. (4) Model del macro:
+`COACH_MODEL_MACRO` (per defecte `claude-opus-5`); el diari i el setmanal
+segueixen amb Sonnet. (5) `run_report()` s'extreu de `main` perquè el
+processador de peticions el pugui cridar. Cost estimat d'un macro: ~1 €.
+
 ## 2026-09-14 — S4a: el coach pot crear sessions; el validador jutja contra la realitat
 
 Preparació del pla rodant (S3 macro, S4b setmana). Decisions: (1) acció

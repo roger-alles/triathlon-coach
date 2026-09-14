@@ -110,3 +110,9 @@ def test_add_is_never_auto_and_does_not_crash():
     assert any("afegeix" in r for r in c.reasons)
     assert c.n_sessions == 1 and c.horizon_days == 1
     assert c.load_before_sec == 0 and c.load_after_sec == sec
+
+
+def test_block_changes_are_never_auto():
+    c = classify([], PLAN, MON, blocking=[], blocks=[B],
+                 block_changes=[{"action": "add", "reason": "x", "new_block": {"phase": "recovery"}}])
+    assert c.auto is False and any("blocs" in r for r in c.reasons)

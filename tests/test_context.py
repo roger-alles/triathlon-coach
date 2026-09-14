@@ -187,3 +187,19 @@ def test_build_context_weekly_takes_the_block_and_plan_of_next_monday():
     assert "between start_date and end_date" in block_query
     plan_query = next(q for q in conn.queries if "from plan_session" in q and "between" in q)
     assert plan_query
+
+
+def test_build_context_carries_the_macro_blocks_and_real_weekly_hours():
+    from coach.context import build_context
+    conn = _full_conn(**{
+        "from plan_block where status": (
+            ["id", "phase", "name", "start_date", "end_date", "target_weekly_hours", "intent",
+             "fallback", "status", "sessions_planned"],
+            [(8, "taper", "Afinada", date(2026, 9, 21), date(2026, 9, 27), 3.5, "i", "f", "active", 6)]),
+        "sum(duration_sec)": (["monday", "hours"], [(date(2026, 9, 7), 5.26)]),
+    })
+    snapshot = build_context(conn, date(2026, 9, 14))
+    assert snapshot["macro"] == [{"id": 8, "phase": "taper", "name": "Afinada", "start_date": "2026-09-21",
+                                 "end_date": "2026-09-27", "target_weekly_hours": 3.5, "intent": "i",
+                                 "fallback": "f", "status": "active", "sessions_planned": 6}]
+    assert snapshot["history_weekly_hours"] == [{"monday": "2026-09-07", "hours": 5.26}]

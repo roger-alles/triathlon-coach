@@ -394,8 +394,10 @@ test("l'informe porta la proposta: només els canvis que no són keep, amb estat
     id: 27,
     createdAt: '2026-09-10T19:32:04Z',
     reportType: 'daily',
+    scope: 'sessions',
     status: 'none',
     classification: { auto: false, reasons: ['sessió clau afectada'] },
+    blockChanges: [],
     changes: [
       { plan_session_id: 43, action: 'move', new_date: '2026-09-11', reason: 'no es pot saltar' },
       { plan_session_id: 44, action: 'modify', reason: 'retallar', new_session: { sport: 'run', title: 'Rodatge 25 min', duration_sec_target: 1500 } },
@@ -467,4 +469,54 @@ test('getSetting / setSetting sobre app_setting', async () => {
   expect(mockFrom).toHaveBeenCalledWith('app_setting');
   expect(chain.update).toHaveBeenCalledWith({ value: 'hybrid' });
   expect(chain.eq).toHaveBeenCalledWith('key', 'coach_apply_mode');
+});
+
+// --- S3: blocs i peticions al coach ----------------------------------------
+
+test('getBlocks: només actius i proposats, per data', async () => {
+  const { getBlocks } = require('./api');
+  const rows = [{ id: 8, goal_id: 2, phase: 'taper', name: 'Afinada', start_date: '2026-09-21', end_date: '2026-09-27',
+                  target_weekly_hours: 3.5, intent: 'i', fallback: 'f', status: 'active' }];
+  const chain = chainResolving({ data: rows, error: null });
+  chain.in = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  expect(await getBlocks()).toEqual(rows);
+  expect(mockFrom).toHaveBeenCalledWith('plan_block');
+  expect(chain.in).toHaveBeenCalledWith('status', ['active', 'proposed']);
+  expect(chain.order).toHaveBeenCalledWith('start_date');
+});
+
+test("la proposta d'un macro porta els canvis de blocs i l'abast", async () => {
+  const row = {
+    ...changesRow, id: 40, report_type: 'macro', proposal_status: 'proposed',
+    output: { summary: 'Recuperació i base.', readiness: { verdict: 'green' }, session_changes: [],
+              block_changes: [
+                { action: 'add', reason: 'cal descansar', new_block: { phase: 'recovery', name: 'Recuperació', start_date: '2026-09-28', end_date: '2026-10-18', target_weekly_hours: 3, intent: 'x', fallback: 'y' } },
+                { action: 'modify', block_id: 8, reason: 'r', new_block: { target_weekly_hours: 3 } },
+                { action: 'cancel', block_id: 7, reason: 'c' },
+              ] },
+  };
+  mockFrom.mockReturnValue(chainResolving({ data: row, error: null }, 'maybeSingle'));
+  const report = await getLatestDailyReport('2026-09-14');
+  expect(report?.proposal?.scope).toBe('macro');
+  expect(report?.proposal?.reportType).toBe('macro');
+  expect(report?.proposal?.changes).toEqual([]);
+  expect(report?.proposal?.blockChanges).toHaveLength(3);
+  expect(report?.proposal?.blockChanges[0]).toMatchObject({ action: 'add', new_block: { phase: 'recovery', target_weekly_hours: 3 } });
+});
+
+test('sendRequest insereix la petició; getRequests torna les últimes', async () => {
+  const { sendRequest, getRequests } = require('./api');
+  const chain = chainResolving({ error: null });
+  chain.insert = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  await sendRequest('regenerate_macro', { goal_id: 2 });
+  expect(mockFrom).toHaveBeenCalledWith('athlete_request');
+  expect(chain.insert).toHaveBeenCalledWith({ kind: 'regenerate_macro', payload: { goal_id: 2 } });
+  const rows = [{ id: 1, kind: 'regenerate_macro', status: 'failed', error: 'ja hi ha un macro', report_id: null, created_at: 'x' }];
+  const chain2 = chainResolving({ data: rows, error: null });
+  mockFrom.mockReturnValue(chain2);
+  expect(await getRequests(3)).toEqual(rows);
+  expect(chain2.order).toHaveBeenCalledWith('created_at', { ascending: false });
+  expect(chain2.limit).toHaveBeenCalledWith(3);
 });
