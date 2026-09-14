@@ -521,6 +521,19 @@ test('sendRequest insereix la petició; getRequests torna les últimes', async (
   expect(chain2.limit).toHaveBeenCalledWith(3);
 });
 
+test('getMacroAnswer llegeix l\'informe i diu si porta canvis de blocs', async () => {
+  const { getMacroAnswer } = require('./api');
+  const row = { id: 36, proposal_status: 'none', output: { summary: 'Cap canvi de blocs: el pla és correcte', block_changes: [] } };
+  const chain = chainResolving({ data: row, error: null }, 'maybeSingle');
+  mockFrom.mockReturnValue(chain);
+  expect(await getMacroAnswer(36)).toEqual({ id: 36, proposalStatus: 'none', summary: 'Cap canvi de blocs: el pla és correcte', hasBlockChanges: false });
+  expect(mockFrom).toHaveBeenCalledWith('coach_report');
+  expect(chain.eq).toHaveBeenCalledWith('id', 36);
+  const chain2 = chainResolving({ data: null, error: null }, 'maybeSingle');
+  mockFrom.mockReturnValue(chain2);
+  expect(await getMacroAnswer(37)).toBeNull();
+});
+
 // --- S2b: perfil de l'atleta ----------------------------------------------
 
 test('getAthlete llegeix la fila 1 amb el perfil (buit si és null)', async () => {

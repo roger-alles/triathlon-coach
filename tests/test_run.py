@@ -537,12 +537,13 @@ def test_run_report_macro_uses_opus_the_macro_prompt_and_is_always_a_proposal(mo
         return "prompt"
     def fake_cycle(**kw):
         calls["cycle"] = kw
-        return {"accepted": True, "output": _macro_output([]),
+        return {"accepted": True, "output": _macro_output(calls.get("blocks", [])),
                 "usage": {"model": "m", "input_tokens": 1, "output_tokens": 1},
                 "validation_errors": [], "warnings": []}
     def fake_write(*a, **kw):
         calls["write"] = kw
         return 42
+    calls["blocks"] = [{"action": "add", "reason": "x", "new_block": {"phase": "recovery"}}]
     monkeypatch.setattr(run, "CoachLLM", fake_llm)
     monkeypatch.setattr(run, "load_prompt", fake_prompt)
     monkeypatch.setattr(run, "coach_cycle", fake_cycle)
@@ -553,3 +554,44 @@ def test_run_report_macro_uses_opus_the_macro_prompt_and_is_always_a_proposal(mo
     assert calls["model"] == "claude-opus-5" and calls["prompt"] == "macro-v1"
     assert calls["cycle"]["report_type"] == "macro"
     assert calls["write"]["proposal_status"] == "proposed" and calls["write"]["scope"] == "macro"
+    # un macro sense cap canvi de blocs no és cap proposta: no hi ha res a aprovar
+    calls["blocks"] = []
+    run.run_report("macro", url="postgres://x", today=MON)
+    assert calls["write"]["proposal_status"] == "none" and calls["write"]["scope"] == "macro"
+
+
+def test_macro_must_carry_block_changes_or_say_explicitly_there_is_nothing_to_change():
+    goal = __import__("coach.models", fromlist=["Goal"]).Goal(
+        name="Forma", discipline="triathlon", event_date=None, priority="A", id=2)
+    empty = _macro_output([])
+    empty["rationale"] = "Afegeixo un bloc de recuperació"   # ho diu però no ho porta
+    touches_sessions = _macro_output([])
+    touches_sessions["summary"] = "Cap canvi de blocs"
+    touches_sessions["session_changes"] = [{"plan_session_id": 1, "action": "cancel", "reason": "x"}]
+    nothing = _macro_output([])
+    nothing["summary"] = "Cap canvi de blocs: el pla ja és correcte"
+    llm = FakeLLM([empty, touches_sessions, nothing])
+    result = coach_cycle(llm=llm, system="", context_json="{}", plan=make_plan(), athlete=ATHLETE,
+                         history=History(), goals=[goal], today=MON, report_type="macro",
+                         blocks=[_block()])
+    assert result["accepted"] is True and llm.calls == 3
+    assert any("block_changes" in e for e in result["validation_errors"][0])
+    assert any("session_changes" in e for e in result["validation_errors"][1])
+
+
+def test_cut_off_feedback_for_a_macro_talks_about_blocks_not_keeps():
+    from coach.llm import OutputCutOff
+
+    class CutLLM:
+        calls = 0
+        def generate(self, system, messages, report_type="daily"):
+            self.calls += 1
+            if self.calls == 1:
+                raise OutputCutOff("64000 tokens; 64000 generats")
+            out = _macro_output([]); out["summary"] = "Cap canvi de blocs"
+            return out, {"model": "m", "input_tokens": 1, "output_tokens": 1}
+    result = coach_cycle(llm=CutLLM(), system="", context_json="{}", plan=make_plan(), athlete=ATHLETE,
+                         history=History(), goals=[], today=MON, report_type="macro", blocks=[_block()])
+    assert result["accepted"] is True
+    msg = result["validation_errors"][0][0]
+    assert "block_changes" in msg and "keep" not in msg

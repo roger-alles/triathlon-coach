@@ -9,11 +9,12 @@ jest.mock('@/lib/api', () => ({
   getBlocks: jest.fn(),
   sendRequest: jest.fn(),
   getRequests: jest.fn(),
+  getMacroAnswer: jest.fn(),
 }));
 
 import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getBlocks, getGoals, getLogistics, getRequests, sendRequest, upsertGoal } from '@/lib/api';
+import { getBlocks, getGoals, getLogistics, getMacroAnswer, getRequests, sendRequest, upsertGoal } from '@/lib/api';
 import Objectius from './objectius';
 
 const mockGoals = getGoals as jest.Mock;
@@ -73,6 +74,7 @@ beforeEach(() => {
     { id: 8, goal_id: 2, phase: 'taper', name: 'Setmana 4 · afinada i cursa', start_date: '2026-09-21', end_date: '2026-09-27', target_weekly_hours: 3.5, intent: null, fallback: null, status: 'active' },
   ]);
   (getRequests as jest.Mock).mockResolvedValue([]);
+  (getMacroAnswer as jest.Mock).mockResolvedValue(null);
   (sendRequest as jest.Mock).mockResolvedValue(undefined);
   mockLogistics.mockResolvedValue([
     { id: 1, local_date: '2026-09-24', title: 'Revisió completa de material', detail: null, blocking: true, done: false },
@@ -182,6 +184,17 @@ test('Demana un macro nou: confirma, insereix la petició i ho diu; una petició
   ]);
   await renderObjectius();
   expect(await screen.findByText(/ja hi ha un macro d'avui/)).toBeOnTheScreen();
+});
+
+test('una petició resposta sense canvis de blocs mostra el resum del coach a Objectius', async () => {
+  (getRequests as jest.Mock).mockResolvedValue([
+    { id: 1, kind: 'regenerate_macro', status: 'answered', error: null, report_id: 36, created_at: '2026-09-14T17:16:00Z' },
+  ]);
+  (getMacroAnswer as jest.Mock).mockResolvedValue({ id: 36, proposalStatus: 'none', summary: 'Cap canvi de blocs: el pla és correcte', hasBlockChanges: false });
+  await renderObjectius();
+  expect(await screen.findByText(/sense canviar blocs: Cap canvi de blocs/)).toBeOnTheScreen();
+  expect(getMacroAnswer).toHaveBeenCalledWith(36);
+  expect(screen.getByText('Demana un macro nou')).toBeOnTheScreen();
 });
 
 // --- S2b: temps objectiu de l'app, ritme derivat, notes -------------------

@@ -2,6 +2,23 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-14 — Macro buit: el rationale i el JSON han de dir el mateix
+
+El primer macro real (Sonnet) va sortir com a "proposta" sense cap
+`block_changes`: el primer intent es va tallar als 64k tokens (raonament +
+resposta comparteixen el sostre), i el segon, després del "sigues més
+compacte", va deixar caure els blocs però el rationale seguia dient que
+afegia la recuperació. L'app no ensenyava res (una proposta sense canvis
+no es pinta) i l'atleta es va quedar esperant. Decisions: (1) un macro
+sense `block_changes` és una infracció que torna al model, tret que el
+summary comenci per "Cap canvi de blocs" (dir explícitament que no cal
+tocar res); un macro amb `session_changes` també. (2) Un macro acceptat
+sense canvis s'escriu amb `proposal_status = none` (informatiu), no
+`proposed`. (3) El missatge de tall diu tokens generats i caràcters de JSON
+vs raonament, i per al macro el consell és "només blocs", no "keep sense
+comentaris". (4) Objectius mostra la resposta del coach a l'última petició
+quan no porta canvis de blocs (abans només es veia el silenci).
+
 ## 2026-09-14 — S2b: el perfil de l'atleta surt de l'objectiu; temps objectiu; R15
 
 Tot el que el coach sabia de l'atleta que no ve de Garmin (dia de descans fix,
