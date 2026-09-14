@@ -223,10 +223,17 @@ def test_regenerate_macro_request_runs_the_macro_once_a_day():
     outcome = process_request(conn, (5, "regenerate_macro", {}), run_macro=lambda: runs.append(1) or 99)
     assert outcome == "answered" and runs == [1]
     assert conn.sql("set status='answered', report_id=%s")[0][1] == (99, 5)
-    # segona petició el mateix dia: no es gasta un altre macro
+    # segona petició el mateix dia: no es gasta un altre macro (límit 1 per defecte)
     conn2 = Conn(decision=(0, 0, ""))
     conn2.macro_today = 1
     conn2.request_claimable = True
     outcome = process_request(conn2, (6, "regenerate_macro", {}), run_macro=lambda: runs.append(2))
     assert outcome == "failed" and runs == [1]
     assert "avui" in conn2.sql("set status='failed'")[0][1][0]
+    # el límit és configurable (MACRO_DAILY_LIMIT) per a fer proves
+    conn3 = Conn(decision=(0, 0, ""))
+    conn3.macro_today = 3
+    conn3.request_claimable = True
+    outcome = process_request(conn3, (7, "regenerate_macro", {}), run_macro=lambda: runs.append(3) or 100,
+                              daily_limit=10)
+    assert outcome == "answered" and runs == [1, 3]

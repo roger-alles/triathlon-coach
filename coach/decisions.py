@@ -197,10 +197,13 @@ def _request_fail(conn, request_id: int, reason: str) -> str:
     return "failed"
 
 
-def process_request(conn, request: tuple, run_macro) -> str:
+def process_request(conn, request: tuple, run_macro, daily_limit: int | None = None) -> str:
     """Una petició de l'atleta: 'skipped' (ja reclamada), 'answered' o 'failed'.
-    Ara només regenerate_macro; la resta de tipus arriben amb la bústia (S5)."""
+    Ara només regenerate_macro; la resta de tipus arriben amb la bústia (S5).
+    MACRO_DAILY_LIMIT (per defecte 1) limita els macros per dia: és la crida cara."""
     request_id, kind, _payload = request
+    if daily_limit is None:
+        daily_limit = int(os.getenv("MACRO_DAILY_LIMIT", "1"))
     claimed = conn.execute("""update athlete_request set status='processing'
                               where id=%s and status='pending' returning id""",
                            (request_id,)).fetchone()
@@ -210,9 +213,10 @@ def process_request(conn, request: tuple, run_macro) -> str:
         return _request_fail(conn, request_id, f"petició '{kind}' encara no suportada")
     n = conn.execute("""select count(*) from coach_report where report_type='macro'
                         and created_at::date = current_date""").fetchone()
-    if n and n[0]:
-        return _request_fail(conn, request_id, "ja hi ha un macro d'avui: descarta'l o "
-                                                "aplica'l, i demana'n un altre demà")
+    if n and n[0] >= daily_limit:
+        return _request_fail(conn, request_id, f"ja hi ha {n[0]} macro(s) d'avui (límit "
+                                                f"{daily_limit}): descarta'l o aplica'l, i "
+                                                f"demana'n un altre demà")
     report_id = run_macro()
     conn.execute("update athlete_request set status='answered', report_id=%s where id=%s",
                  (report_id, request_id))

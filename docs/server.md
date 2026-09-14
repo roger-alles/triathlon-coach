@@ -93,9 +93,11 @@ vegeu `docs/security-review-2026-09.md`.
 
 ## Models del coach
 
-`.env`: `COACH_MODEL` (diari i setmanal; per defecte `claude-sonnet-5`) i
-`COACH_MODEL_MACRO` (macro; per defecte `claude-opus-5`). Costos reals:
-diari ~0,11 €, setmanal ~0,18 €, macro ~1 €.
+`.env`: `COACH_MODEL` (diari i setmanal; per defecte `claude-sonnet-5`),
+`COACH_MODEL_MACRO` (macro; per defecte `claude-opus-5`; al servidor ara
+`claude-sonnet-5` mentre es fan proves) i `MACRO_DAILY_LIMIT` (macros per
+dia; per defecte 1; al servidor 10 durant les proves). Costos reals: diari
+~0,11 €, setmanal ~0,18 €, macro ~0,26 € amb Opus / ~0,10 € amb Sonnet.
 
 ## Seguretat del servidor (hardening 13/09/2026)
 
