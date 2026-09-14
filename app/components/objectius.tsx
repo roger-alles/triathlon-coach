@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GoalForm from '@/components/goal-form';
 import { ThemedText } from '@/components/themed-text';
-import { Goal, LogisticsTask, getGoals, getLogistics, setLogisticsDone } from '@/lib/api';
+import { Goal, LogisticsTask, getGoals, getLogistics, getSetting, setLogisticsDone, setSetting } from '@/lib/api';
 import { daysUntil, formatClock, sportLabel } from '@/lib/format';
 
 const SCENARIOS = ['Prudent', 'Objectiu', 'Gran dia'];
@@ -28,6 +28,7 @@ export default function Objectius() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [logistics, setLogistics] = useState<LogisticsTask[]>([]);
   const [editing, setEditing] = useState<Goal | 'new' | null>(null);
+  const [applyMode, setApplyMode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
@@ -48,6 +49,7 @@ export default function Objectius() {
       const gs = await getGoals();
       setGoals(gs);
       setLogistics(gs.length > 0 ? await getLogistics(gs[0].id) : []);
+      setApplyMode((await getSetting('coach_apply_mode')) ?? 'dry_run');
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -84,6 +86,45 @@ export default function Objectius() {
 
   const goal = goals[0] ?? null;
   const others = goals.slice(1);
+
+  const toggleApplyMode = (on: boolean) => {
+    const write = async (mode: 'dry_run' | 'hybrid') => {
+      const before = applyMode;
+      setApplyMode(mode);
+      try {
+        await setSetting('coach_apply_mode', mode);
+      } catch (e) {
+        setApplyMode(before);
+        setError(e instanceof Error ? e.message : String(e));
+      }
+    };
+    if (!on) return write('dry_run');
+    Alert.alert(
+      'Activar el mode híbrid?',
+      'El coach aplicarà sol els canvis petits (com a molt 2 sessions, 3 dies, mai una clau, mai més càrrega) i et demanarà permís per a la resta. Tot es pot desfer des d’Avui el mateix dia.',
+      [
+        { text: 'Cancel·la', style: 'cancel' },
+        { text: 'Activa', style: 'default', onPress: () => write('hybrid') },
+      ]
+    );
+  };
+
+  const coachSettings = (
+    <>
+      <ThemedText style={styles.sectionTitle}>Coach</ThemedText>
+      <View style={styles.card}>
+        <View style={styles.switchRow}>
+          <ThemedText style={styles.switchLabel}>El coach aplica els canvis (mode híbrid)</ThemedText>
+          <Switch value={applyMode === 'hybrid'} onValueChange={toggleApplyMode} />
+        </View>
+        <ThemedText style={styles.switchHelp}>
+          {applyMode === 'hybrid'
+            ? 'Mode híbrid: els canvis petits s’apliquen sols; els grans esperen el teu Aplica a Avui.'
+            : 'Mode prova: el coach proposa i ho veus a Avui, però no toca el pla.'}
+        </ThemedText>
+      </View>
+    </>
+  );
   const newButton = (
     <TouchableOpacity style={styles.newButton} onPress={() => setEditing('new')}>
       <ThemedText style={styles.newButtonText}>Nou objectiu</ThemedText>
@@ -92,10 +133,11 @@ export default function Objectius() {
 
   if (!goal) {
     return (
-      <View style={[styles.center, { gap: 12 }]}>
+      <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
         <ThemedText>{error ?? 'Cap objectiu actiu.'}</ThemedText>
         {newButton}
-      </View>
+        {coachSettings}
+      </ScrollView>
     );
   }
 
@@ -223,6 +265,8 @@ export default function Objectius() {
         ))}
         {newButton}
       </View>
+
+      {coachSettings}
     </ScrollView>
   );
 }
@@ -269,4 +313,7 @@ const styles = StyleSheet.create({
   goalMeta: { fontSize: 13, opacity: 0.7 },
   newButton: { alignSelf: 'flex-start', marginTop: 4, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#1D3D47' },
   newButtonText: { color: '#fff', fontWeight: '700' },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  switchLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
+  switchHelp: { fontSize: 12, opacity: 0.7 },
 });

@@ -12,17 +12,26 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import LogSession from '@/components/log-session';
+import ProposalCard from '@/components/proposal-card';
 import { ThemedText } from '@/components/themed-text';
 
 import {
   AthleteAnswer,
   DailyReport,
+  Decision,
   PlanSession,
+  Proposal,
+  SessionRef,
   getAnswers,
+  getDecisions,
   getLatestDailyReport,
+  getOpenProposals,
+  getSessionsByIds,
   getSessionsForDay,
+  getSetting,
   localDateISO,
   sendAnswer,
+  sendDecision,
 } from '@/lib/api';
 import { formatDateCa, formatDuration, formatSegment, formatStep, sportEmoji, sportLabel, verdictColor } from '@/lib/format';
 import { supabase } from '@/lib/supabase';
@@ -41,6 +50,10 @@ export default function Avui() {
   const [report, setReport] = useState<DailyReport | null>(null);
   const [sessions, setSessions] = useState<PlanSession[]>([]);
   const [answers, setAnswers] = useState<AthleteAnswer[]>([]);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [refs, setRefs] = useState<Map<number, SessionRef>>(new Map());
+  const [decisions, setDecisions] = useState<Decision[]>([]);
+  const [applyMode, setApplyMode] = useState('dry_run');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -50,10 +63,24 @@ export default function Avui() {
     setError(null);
     try {
       const today = localDateISO();
-      const [r, s] = await Promise.all([getLatestDailyReport(today), getSessionsForDay(today)]);
+      const [r, s, open, mode] = await Promise.all([
+        getLatestDailyReport(today), getSessionsForDay(today), getOpenProposals(today), getSetting('coach_apply_mode'),
+      ]);
       setReport(r);
       setSessions(s);
-      setAnswers(r ? await getAnswers(r.id) : []);
+      setApplyMode(mode ?? 'dry_run');
+      // la proposta de l'informe d'avui primer; després les obertes d'altres informes
+      const all = [...(r?.proposal ? [r.proposal] : []), ...open.filter((p) => p.id !== r?.proposal?.id)];
+      setProposals(all);
+      const ids = all.flatMap((p) => p.changes.map((c) => c.plan_session_id));
+      const [answersNow, refsNow, decisionsNow] = await Promise.all([
+        r ? getAnswers(r.id) : Promise.resolve([]),
+        getSessionsByIds(ids),
+        getDecisions(all.map((p) => p.id)),
+      ]);
+      setAnswers(answersNow);
+      setRefs(refsNow);
+      setDecisions(decisionsNow);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -98,6 +125,20 @@ export default function Avui() {
       ) : (
         !error && <ThemedText style={styles.muted}>Encara no hi ha informe del coach.</ThemedText>
       )}
+
+      {proposals.map((p) => (
+        <ProposalCard
+          key={p.id}
+          proposal={p}
+          sessions={refs}
+          decision={decisions.find((d) => d.report_id === p.id)}
+          applyMode={applyMode}
+          onDecide={async (kind) => {
+            await sendDecision(p.id, kind);
+            await load();
+          }}
+        />
+      ))}
 
       {sessions.map((s, i) => (
         <View key={s.id} style={styles.card}>

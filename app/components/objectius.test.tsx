@@ -6,11 +6,13 @@ jest.mock('@/lib/api', () => ({
   setLogisticsDone: jest.fn(),
   upsertGoal: jest.fn(),
   abandonGoal: jest.fn(),
+  getSetting: jest.fn(),
+  setSetting: jest.fn(),
 }));
 
-import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getGoals, getLogistics, upsertGoal } from '@/lib/api';
+import { getGoals, getLogistics, getSetting, setSetting, upsertGoal } from '@/lib/api';
 import Objectius from './objectius';
 
 const mockGoals = getGoals as jest.Mock;
@@ -65,6 +67,8 @@ const popular = {
 beforeEach(() => {
   jest.clearAllMocks();
   mockGoals.mockResolvedValue([goal, popular]);
+  (getSetting as jest.Mock).mockResolvedValue('dry_run');
+  (setSetting as jest.Mock).mockResolvedValue(undefined);
   mockLogistics.mockResolvedValue([
     { id: 1, local_date: '2026-09-24', title: 'Revisió completa de material', detail: null, blocking: true, done: false },
   ]);
@@ -147,4 +151,15 @@ test('tocar un objectiu de la llista obre el formulari preomplert', async () => 
   await user.press(screen.getByText('10 km popular'));
   expect(screen.getByDisplayValue('10 km popular')).toBeOnTheScreen();
   expect(screen.getByText('Abandona')).toBeOnTheScreen();
+});
+
+test("l'interruptor del coach llegeix el mode, i activar-lo confirma i escriu 'hybrid'", async () => {
+  const { Alert } = require('react-native');
+  jest.spyOn(Alert, 'alert').mockImplementation((_t: any, _m: any, buttons: any) => buttons?.find((b: any) => b.style !== 'cancel')?.onPress?.());
+  await renderObjectius();
+  const sw = await screen.findByRole('switch');
+  expect(sw.props.value).toBe(false);
+  expect(screen.getByText(/mode prova/i)).toBeOnTheScreen();
+  fireEvent(sw, 'valueChange', true);
+  await waitFor(() => expect(setSetting).toHaveBeenCalledWith('coach_apply_mode', 'hybrid'));
 });

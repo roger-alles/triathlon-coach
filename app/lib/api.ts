@@ -15,7 +15,123 @@ export type DailyReport = {
   // de demà · 'preview_today': el d'ahir al vespre, parla d'avui (encara no hi
   // ha el del matí)
   kind: 'today' | 'preview_tomorrow' | 'preview_today';
+  proposal: Proposal | null; // els canvis al pla que l'informe proposa (cap keep)
 };
+
+// --- Propostes del coach (S1a al servidor, S1b a l'app) ---------------------
+
+export type SessionChange = {
+  plan_session_id: number;
+  action: 'modify' | 'replace' | 'move' | 'cancel';
+  reason: string;
+  new_date?: string;
+  new_session?: { sport: string; title: string; duration_sec_target?: number; priority?: string; rationale?: string };
+};
+
+export type ProposalStatus = 'none' | 'auto_applied' | 'proposed' | 'applied' | 'discarded' | 'undone' | 'failed';
+
+export type Proposal = {
+  id: number; // = coach_report.id
+  createdAt: string;
+  reportType: string;
+  status: ProposalStatus;
+  classification: { auto: boolean; reasons: string[] } | null;
+  changes: SessionChange[];
+};
+
+export type Decision = {
+  id: number;
+  report_id: number;
+  decision: 'apply' | 'discard' | 'undo';
+  status: 'pending' | 'processing' | 'done' | 'failed';
+  error: string | null;
+  created_at: string;
+};
+
+const PROPOSAL_COLUMNS = 'id, created_at, window_start, report_type, proposal_status, classification, output';
+
+function proposalOf(row: Record<string, any>): Proposal | null {
+  const changes: SessionChange[] = (row.output?.session_changes ?? [])
+    .filter((c: any) => c.action !== 'keep')
+    .map((c: any) => {
+      const out: SessionChange = { plan_session_id: c.plan_session_id, action: c.action, reason: c.reason ?? '' };
+      if (c.new_date) out.new_date = c.new_date;
+      if (c.new_session) {
+        const n = c.new_session;
+        out.new_session = { sport: n.sport, title: n.title };
+        if (n.duration_sec_target != null) out.new_session.duration_sec_target = n.duration_sec_target;
+        if (n.priority) out.new_session.priority = n.priority;
+        if (n.rationale) out.new_session.rationale = n.rationale;
+      }
+      return out;
+    });
+  if (changes.length === 0) return null;
+  const cl = row.classification;
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    reportType: row.report_type ?? 'daily',
+    status: row.proposal_status ?? 'none',
+    classification: cl ? { auto: !!cl.auto, reasons: cl.reasons ?? [] } : null,
+    changes,
+  };
+}
+
+// Propostes obertes o acabades de resoldre (últims 7 dies), sense el keep.
+// En dry_run no n'hi ha cap: tot queda a 'none'.
+export async function getOpenProposals(todayISO: string): Promise<Proposal[]> {
+  const since = parseLocalISO(todayISO);
+  since.setDate(since.getDate() - 7);
+  const { data, error } = await supabase
+    .from('coach_report')
+    .select(PROPOSAL_COLUMNS)
+    .in('proposal_status', ['proposed', 'auto_applied', 'applied', 'failed'])
+    .gte('created_at', localDateISO(since))
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as Record<string, any>[]).map(proposalOf).filter((p): p is Proposal => p != null);
+}
+
+export type SessionRef = { id: number; local_date: string; sport: string; title: string; status: string };
+
+export async function getSessionsByIds(ids: number[]): Promise<Map<number, SessionRef>> {
+  const unique = Array.from(new Set(ids));
+  if (unique.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from('plan_session')
+    .select('id, local_date, sport, title, status')
+    .in('id', unique);
+  if (error) throw new Error(error.message);
+  return new Map(((data ?? []) as SessionRef[]).map((s) => [s.id, s]));
+}
+
+// L'app només encua; coach.decisions (cron cada 5 min) executa i marca done/failed.
+export async function sendDecision(reportId: number, decision: Decision['decision']): Promise<void> {
+  const { error } = await supabase.from('coach_decision').insert({ report_id: reportId, decision });
+  if (error) throw new Error(error.message);
+}
+
+export async function getDecisions(reportIds: number[]): Promise<Decision[]> {
+  if (reportIds.length === 0) return [];
+  const { data, error } = await supabase
+    .from('coach_decision')
+    .select('id, report_id, decision, status, error, created_at')
+    .in('report_id', reportIds)
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as Decision[];
+}
+
+export async function getSetting(key: string): Promise<string | null> {
+  const { data, error } = await supabase.from('app_setting').select('value').eq('key', key).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data?.value as string | undefined) ?? null;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  const { error } = await supabase.from('app_setting').update({ value }).eq('key', key);
+  if (error) throw new Error(error.message);
+}
 
 export type PlanSession = {
   id: number;
@@ -255,7 +371,7 @@ export async function setLogisticsDone(id: number, done: boolean): Promise<void>
 export async function getLatestDailyReport(todayISO: string): Promise<DailyReport | null> {
   const { data, error } = await supabase
     .from('coach_report')
-    .select('id, created_at, window_start, output')
+    .select(PROPOSAL_COLUMNS)
     .eq('report_type', 'daily')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -278,6 +394,7 @@ export async function getLatestDailyReport(todayISO: string): Promise<DailyRepor
     questions: output.questions_for_athlete ?? [],
     windowStart: data.window_start,
     kind,
+    proposal: proposalOf(data),
   };
 }
 
