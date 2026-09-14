@@ -54,12 +54,14 @@ make report      # últim informe del coach
 
 - Ingesta, pla, coach diari/setmanal, validador i app: en producció al servidor
   des del 07/09/2026, sense dependre de cap màquina personal.
-- Coach en *dry-run* fins a la cursa. Infraestructura per aplicar propostes amb
-  seguretat (transacció única, efectes registrats, desfer) desplegada i inert.
+- Propostes del coach a l'app: diff de sessions amb la raó, Aplica / Descarta /
+  Desfés, i interruptor del mode (prova o híbrid) a Objectius. En híbrid el
+  coach aplica sol els canvis petits i demana permís per a la resta; tot amb
+  efectes registrats i desfer.
 - Sessions fetes sense rellotge: "Ho he fet" a Avui i a Setmana (dies
   anteriors, sessions perdudes, trams d'un triatló), amb el dia real de la
   sessió; el vinculador respecta la sessió que l'atleta ha triat.
 - Objectius des de l'app: llista A/B/C, alta, edició i abandonament; l'A més
   proper governa el pla.
-- Pendent: propostes del coach a l'app (S1b), macro i setmana rodant (S3-S4),
+- Pendent: validador per a pla rodant (S4a), macro i setmana rodant (S3-S4),
   multiusuari i TestFlight.

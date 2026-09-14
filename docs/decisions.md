@@ -2,6 +2,22 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-14 — S1b: propostes del coach a l'app; adeu al dry-run fins al 28
+
+Roger (14/09): "no podem treure el dry_run i fer-ho tot bé directament?". Sí,
+amb una condició: veure i desfer des del mòbil. Això és S1b. La targeta
+d'Avui pinta el diff de cada informe amb canvis (dia i títol actual → què
+proposa, i la raó), amb botons segons `proposal_status`: `proposed` → Aplica /
+Descarta; `auto_applied` i `applied` → Desfés; en dry-run, etiqueta "Mode
+prova" i cap botó. L'app només encua a `coach_decision`; `coach.decisions`
+(cron cada 5 min) executa, i la targeta ensenya "Aplicant…" o l'error si
+falla (una proposta pot haver caducat). L'interruptor del mode és a Objectius
+(secció Coach), amb confirmació en activar l'híbrid. Decisió: l'híbrid
+s'activa tan bon punt S1b és al mòbil, no el 28: els primers canvis reals del
+coach passen sobre un pla que l'atleta es sap de memòria i amb ell mirant
+cada matí, no sobre un bloc nou. `apply_to_db` fa la primera escriptura real
+llavors; es vigila `coach_report_effect` el primer dia.
+
 ## 2026-09-14 — S2: objectius des de l'app; l'A més proper governa
 
 Primer tall del camí cap a un pla generat pel coach i un segon usuari

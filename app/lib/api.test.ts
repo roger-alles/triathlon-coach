@@ -60,6 +60,7 @@ test("l'últim informe daily es tradueix al que la pantalla necessita", async ()
     questions: ['Com notes les cames?'],
     windowStart: '2026-08-29',
     kind: 'today',
+    proposal: null,
   });
 });
 
@@ -364,4 +365,106 @@ test('les sessions de la setmana porten la prioritat (clau / suport / opcional)'
   mockFrom.mockReturnValue(chain);
   await getSessionsForRange('2026-08-24', '2026-08-30');
   expect(chain.select).toHaveBeenCalledWith(expect.stringContaining('priority'));
+});
+
+// --- S1b: propostes del coach i decisions ----------------------------------
+
+const changesRow = {
+  id: 27,
+  created_at: '2026-09-10T19:32:04Z',
+  window_start: '2026-09-11',
+  report_type: 'daily',
+  proposal_status: 'none',
+  classification: { auto: false, reasons: ['sessió clau afectada'], n_sessions: 1 },
+  output: {
+    summary: 'Mou la natació a demà.',
+    readiness: { verdict: 'amber' },
+    session_changes: [
+      { plan_session_id: 44, action: 'keep', reason: 'tal com estava' },
+      { plan_session_id: 43, action: 'move', new_date: '2026-09-11', reason: 'no es pot saltar' },
+      { plan_session_id: 44, action: 'modify', reason: 'retallar', new_session: { sport: 'run', session_type: 'easy', title: 'Rodatge 25 min', structure_json: '{}', duration_sec_target: 1500 } },
+    ],
+  },
+};
+
+test("l'informe porta la proposta: només els canvis que no són keep, amb estat i classificació", async () => {
+  mockFrom.mockReturnValue(chainResolving({ data: changesRow, error: null }, 'maybeSingle'));
+  const report = await getLatestDailyReport('2026-09-11');
+  expect(report?.proposal).toEqual({
+    id: 27,
+    createdAt: '2026-09-10T19:32:04Z',
+    reportType: 'daily',
+    status: 'none',
+    classification: { auto: false, reasons: ['sessió clau afectada'] },
+    changes: [
+      { plan_session_id: 43, action: 'move', new_date: '2026-09-11', reason: 'no es pot saltar' },
+      { plan_session_id: 44, action: 'modify', reason: 'retallar', new_session: { sport: 'run', title: 'Rodatge 25 min', duration_sec_target: 1500 } },
+    ],
+  });
+});
+
+test('un informe que ho manté tot no té proposta', async () => {
+  const row = { ...changesRow, output: { ...changesRow.output, session_changes: [{ plan_session_id: 44, action: 'keep', reason: 'ok' }] } };
+  mockFrom.mockReturnValue(chainResolving({ data: row, error: null }, 'maybeSingle'));
+  expect((await getLatestDailyReport('2026-09-11'))?.proposal).toBeNull();
+});
+
+test('getOpenProposals: només estats oberts dels últims 7 dies, més recents primer', async () => {
+  const { getOpenProposals } = require('./api');
+  const chain = chainResolving({ data: [changesRow], error: null });
+  chain.in = jest.fn(() => chain);
+  chain.gte = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  const out = await getOpenProposals('2026-09-14');
+  expect(mockFrom).toHaveBeenCalledWith('coach_report');
+  expect(chain.in).toHaveBeenCalledWith('proposal_status', ['proposed', 'auto_applied', 'applied', 'failed']);
+  expect(chain.gte).toHaveBeenCalledWith('created_at', '2026-09-07');
+  expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
+  expect(out).toHaveLength(1);
+  expect(out[0].changes).toHaveLength(2);
+});
+
+test('getSessionsByIds demana només els ids donats; buit no consulta', async () => {
+  const { getSessionsByIds } = require('./api');
+  const rows = [{ id: 43, local_date: '2026-09-10', sport: 'swim', title: 'Ritme de cursa amb orientació', status: 'completed' }];
+  const chain = chainResolving({ data: rows, error: null });
+  chain.in = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  const map = await getSessionsByIds([43, 43, 44]);
+  expect(chain.in).toHaveBeenCalledWith('id', [43, 44]);
+  expect(map.get(43)?.title).toBe('Ritme de cursa amb orientació');
+  mockFrom.mockClear();
+  expect((await getSessionsByIds([])).size).toBe(0);
+  expect(mockFrom).not.toHaveBeenCalled();
+});
+
+test('sendDecision insereix la decisió; getDecisions torna les dels informes donats', async () => {
+  const { sendDecision, getDecisions } = require('./api');
+  const chain = chainResolving({ error: null });
+  chain.insert = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  await sendDecision(27, 'apply');
+  expect(mockFrom).toHaveBeenCalledWith('coach_decision');
+  expect(chain.insert).toHaveBeenCalledWith({ report_id: 27, decision: 'apply' });
+
+  const rows = [{ id: 1, report_id: 27, decision: 'apply', status: 'failed', error: 'proposta caducada', created_at: '2026-09-14T10:00:00Z' }];
+  const chain2 = chainResolving({ data: rows, error: null });
+  chain2.in = jest.fn(() => chain2);
+  mockFrom.mockReturnValue(chain2);
+  const ds = await getDecisions([27]);
+  expect(chain2.in).toHaveBeenCalledWith('report_id', [27]);
+  expect(ds).toEqual(rows);
+});
+
+test('getSetting / setSetting sobre app_setting', async () => {
+  const { getSetting, setSetting } = require('./api');
+  mockFrom.mockReturnValue(chainResolving({ data: { value: 'dry_run' }, error: null }, 'maybeSingle'));
+  expect(await getSetting('coach_apply_mode')).toBe('dry_run');
+  const chain = chainResolving({ error: null });
+  chain.update = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  await setSetting('coach_apply_mode', 'hybrid');
+  expect(mockFrom).toHaveBeenCalledWith('app_setting');
+  expect(chain.update).toHaveBeenCalledWith({ value: 'hybrid' });
+  expect(chain.eq).toHaveBeenCalledWith('key', 'coach_apply_mode');
 });

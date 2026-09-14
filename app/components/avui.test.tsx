@@ -1,15 +1,21 @@
 jest.mock('@/lib/api', () => ({
+  ...jest.requireActual('@/lib/api'),
   getLatestDailyReport: jest.fn(),
   getSessionsForDay: jest.fn(),
   getAnswers: jest.fn(),
   sendAnswer: jest.fn(),
+  getOpenProposals: jest.fn(),
+  getSessionsByIds: jest.fn(),
+  getDecisions: jest.fn(),
+  getSetting: jest.fn(),
+  sendDecision: jest.fn(),
   localDateISO: () => '2026-08-29',
 }));
 jest.mock('@/lib/supabase', () => ({ supabase: { auth: { signOut: jest.fn() } } }));
 
 import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnswers, getLatestDailyReport, getSessionsForDay, sendAnswer } from '@/lib/api';
+import { getAnswers, getDecisions, getLatestDailyReport, getOpenProposals, getSessionsByIds, getSessionsForDay, getSetting, sendAnswer, sendDecision } from '@/lib/api';
 import Avui from './avui';
 
 const mockGetAnswers = getAnswers as jest.Mock;
@@ -38,6 +44,16 @@ const report = {
   questions: ['Com notes les cames?'],
   windowStart: '2026-08-29',
   kind: 'today',
+  proposal: null,
+};
+
+const proposal = {
+  id: 7,
+  createdAt: '2026-08-29T07:23:51Z',
+  reportType: 'daily',
+  status: 'none',
+  classification: { auto: true, reasons: [] },
+  changes: [{ plan_session_id: 1, action: 'modify', reason: 'cames pesades', new_session: { sport: 'run', title: 'Rodatge suau', duration_sec_target: 2400 } }],
 };
 
 const session = {
@@ -60,6 +76,11 @@ beforeEach(() => {
   mockSessions.mockResolvedValue([session]);
   mockGetAnswers.mockResolvedValue([]);
   mockSendAnswer.mockResolvedValue(undefined);
+  (getOpenProposals as jest.Mock).mockResolvedValue([]);
+  (getSessionsByIds as jest.Mock).mockResolvedValue(new Map([[1, { id: 1, local_date: '2026-08-29', sport: 'run', title: 'Sèries 5×1000', status: 'planned' }]]));
+  (getDecisions as jest.Mock).mockResolvedValue([]);
+  (getSetting as jest.Mock).mockResolvedValue('dry_run');
+  (sendDecision as jest.Mock).mockResolvedValue(undefined);
 });
 
 test('respondre una pregunta del coach: escriure, enviar, confirmació', async () => {
@@ -145,4 +166,33 @@ test('el simulacre (segments) es pinta, no surt buit', async () => {
   expect(screen.getByText('Natació 800 m · RPE 7 · mar')).toBeOnTheScreen();
   expect(screen.getByText('T1 cronometrada')).toBeOnTheScreen();
   expect(screen.getByText('Bici 34 km · RPE 7')).toBeOnTheScreen();
+});
+
+test("un informe amb canvis mostra la targeta de proposta; en mode prova, etiquetada", async () => {
+  mockReport.mockResolvedValue({ ...report, proposal });
+  await renderAvui();
+  expect(await screen.findByText(/Proposta del coach/)).toBeOnTheScreen();
+  expect(screen.getByText(/Mode prova/)).toBeOnTheScreen();
+  expect(screen.getByText(/Ds 29 · Sèries 5×1000/)).toBeOnTheScreen();
+  expect(screen.getByText(/→ Rodatge suau · 40 min/)).toBeOnTheScreen();
+  expect(getSessionsByIds).toHaveBeenCalledWith([1]);
+});
+
+test('un informe que ho manté tot no mostra cap targeta', async () => {
+  await renderAvui();
+  await screen.findByText('Rodatge suau en lloc de sèries.');
+  expect(screen.queryByText(/Proposta del coach/)).toBeNull();
+});
+
+test('una proposta oberta d\'un altre informe també surt, i Aplica envia la decisió i recarrega', async () => {
+  (getOpenProposals as jest.Mock).mockResolvedValue([{ ...proposal, id: 9, status: 'proposed', classification: { auto: false, reasons: ['sessió clau'] } }]);
+  (getSetting as jest.Mock).mockResolvedValue('hybrid');
+  await renderAvui();
+  expect(await screen.findByText(/Pendent de tu/)).toBeOnTheScreen();
+  const { Alert } = require('react-native');
+  jest.spyOn(Alert, 'alert').mockImplementation((_t: any, _m: any, buttons: any) => buttons?.find((b: any) => b.style !== 'cancel')?.onPress?.());
+  const user = userEvent.setup();
+  await user.press(screen.getByText('Aplica'));
+  await waitFor(() => expect(sendDecision).toHaveBeenCalledWith(9, 'apply'));
+  await waitFor(() => expect(getOpenProposals).toHaveBeenCalledTimes(2));
 });
