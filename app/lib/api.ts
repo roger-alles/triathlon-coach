@@ -548,3 +548,45 @@ export async function getSessionsForDay(dateISO: string): Promise<PlanSession[]>
   if (error) throw new Error(error.message);
   return (data ?? []) as PlanSession[];
 }
+
+// --- Perfil de l'atleta (S2b) ---------------------------------------------
+// El que el coach ha de saber de mi i no ve de Garmin: disponibilitat, salut,
+// notes. Viu a athlete.profile (jsonb); l'app només edita constraints i notes
+// i conserva la resta (health, known, unknown...).
+
+export type AthleteProfile = {
+  constraints?: {
+    fixed_rest_day?: string | null;
+    weekly_hours_ceiling?: number | null;
+    available_days?: string[];
+    pool_availability?: string | null;
+    gym?: boolean | null;
+    [k: string]: any;
+  };
+  notes?: string | null;
+  [k: string]: any;
+};
+
+export type Athlete = {
+  id: number;
+  name: string;
+  birth_date: string | null;
+  max_hr: number | null;
+  profile: AthleteProfile;
+};
+
+export async function getAthlete(): Promise<Athlete | null> {
+  const { data, error } = await supabase
+    .from('athlete')
+    .select('id, name, birth_date, max_hr, profile')
+    .eq('id', 1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return { ...(data as Athlete), profile: (data as Athlete).profile ?? {} };
+}
+
+export async function updateAthleteProfile(profile: AthleteProfile): Promise<void> {
+  const { error } = await supabase.from('athlete').update({ profile }).eq('id', 1);
+  if (error) throw new Error(error.message);
+}

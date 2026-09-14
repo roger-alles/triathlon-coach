@@ -35,7 +35,6 @@ import {
   sendDecision,
 } from '@/lib/api';
 import { formatDateCa, formatDuration, formatSegment, formatStep, sportEmoji, sportLabel, verdictColor } from '@/lib/format';
-import { supabase } from '@/lib/supabase';
 
 const VERDICT_LABEL: Record<string, string> = { green: 'VERD', amber: 'ÀMBAR', red: 'VERMELL' };
 
@@ -193,9 +192,6 @@ export default function Avui() {
         </>
       )}
 
-      <TouchableOpacity onPress={() => supabase.auth.signOut()}>
-        <ThemedText style={styles.logout}>Surt</ThemedText>
-      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -266,7 +262,6 @@ const styles = StyleSheet.create({
   rationale: { fontSize: 15, lineHeight: 22 },
   muted: { opacity: 0.6, textAlign: 'center', marginTop: 8 },
   error: { color: '#d64541', textAlign: 'center' },
-  logout: { textAlign: 'center', opacity: 0.5, marginTop: 16 },
   questionRow: { gap: 6 },
   answerRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   answerInput: {

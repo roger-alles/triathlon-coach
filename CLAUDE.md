@@ -58,13 +58,16 @@ abans). Càrregues d'activitats sense FC són estimades (durada×50) — soroll.
   27/08/2026). Pregunta-hi després de bicis llargues. No limitant a dia d'avui.
 - Sense potenciòmetre: la bici va per RPE. Sovint neda a mar sense registrar
   (entrades manuals amb id negatiu i nota).
+- El que ell declara de si mateix (dia de descans fix, sostre d'hores, dies
+  disponibles, piscina, genoll, marques, notes) és a `athlete.profile`
+  (editable a la pestanya Jo de l'app); el coach ho rep dins d'`athlete`.
 
 ## Límits durs
 
 1. **MAI modificar el pla (`seeds/` o BD) sense aprovació explícita d'en Roger
    en aquesta mateixa conversa.** Circuit: proposta → ell aprova → editar
    `seeds/fornells-2026.yaml` → `.venv/bin/python -m ingest.seed` →
-   `make validate` (14 regles; els 2 avisos R9 del taper són coneguts i
+   `make validate` (15 regles; els 2 avisos R9 del taper són coneguts i
    acceptats). Mai escriure directament a `plan_session`.
 2. **No executar `coach.run` ni res que gasti l'API d'Anthropic** — el coach
    automàtic ja corre sol al servidor `alberginia` (`docs/server.md`: matí cada

@@ -120,3 +120,16 @@ def test_seed_guard_refuses_once_the_coach_owns_the_plan():
     assert coach_owns_plan(_LiveConn(versioned=True, applied=False))
     assert coach_owns_plan(_LiveConn(versioned=False, applied=True))
     assert not coach_owns_plan(_LiveConn(versioned=False, applied=False))
+
+
+def test_athlete_context_goes_to_the_athlete_row_not_the_goal():
+    from ingest.seed import extra_profile_for, upsert_athlete_profile
+
+    data = {"athlete_context": {"constraints": {"weekly_hours_ceiling": 8}},
+            "pacing_rules": ["x"], "source": "seed"}
+    assert extra_profile_for(data) == {"pacing_rules": ["x"], "source": "seed"}
+    conn = _FakeConn()
+    upsert_athlete_profile(conn, data["athlete_context"])
+    sql, params = conn.calls[0]
+    assert "update athlete set profile" in sql and "where id = 1" in sql
+    assert params[0].obj == data["athlete_context"]

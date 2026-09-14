@@ -6,16 +6,14 @@ jest.mock('@/lib/api', () => ({
   setLogisticsDone: jest.fn(),
   upsertGoal: jest.fn(),
   abandonGoal: jest.fn(),
-  getSetting: jest.fn(),
-  setSetting: jest.fn(),
   getBlocks: jest.fn(),
   sendRequest: jest.fn(),
   getRequests: jest.fn(),
 }));
 
-import { fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
+import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getBlocks, getGoals, getLogistics, getRequests, getSetting, sendRequest, setSetting, upsertGoal } from '@/lib/api';
+import { getBlocks, getGoals, getLogistics, getRequests, sendRequest, upsertGoal } from '@/lib/api';
 import Objectius from './objectius';
 
 const mockGoals = getGoals as jest.Mock;
@@ -70,8 +68,6 @@ const popular = {
 beforeEach(() => {
   jest.clearAllMocks();
   mockGoals.mockResolvedValue([goal, popular]);
-  (getSetting as jest.Mock).mockResolvedValue('dry_run');
-  (setSetting as jest.Mock).mockResolvedValue(undefined);
   (getBlocks as jest.Mock).mockResolvedValue([
     { id: 7, goal_id: 2, phase: 'peak', name: 'Setmana 3 · específica', start_date: '2026-09-14', end_date: '2026-09-20', target_weekly_hours: 7, intent: null, fallback: null, status: 'active' },
     { id: 8, goal_id: 2, phase: 'taper', name: 'Setmana 4 · afinada i cursa', start_date: '2026-09-21', end_date: '2026-09-27', target_weekly_hours: 3.5, intent: null, fallback: null, status: 'active' },
@@ -162,17 +158,6 @@ test('tocar un objectiu de la llista obre el formulari preomplert', async () => 
   expect(screen.getByText('Abandona')).toBeOnTheScreen();
 });
 
-test("l'interruptor del coach llegeix el mode, i activar-lo confirma i escriu 'hybrid'", async () => {
-  const { Alert } = require('react-native');
-  jest.spyOn(Alert, 'alert').mockImplementation((_t: any, _m: any, buttons: any) => buttons?.find((b: any) => b.style !== 'cancel')?.onPress?.());
-  await renderObjectius();
-  const sw = await screen.findByRole('switch');
-  expect(sw.props.value).toBe(false);
-  expect(screen.getByText(/mode prova/i)).toBeOnTheScreen();
-  fireEvent(sw, 'valueChange', true);
-  await waitFor(() => expect(setSetting).toHaveBeenCalledWith('coach_apply_mode', 'hybrid'));
-});
-
 test('la secció Pla mostra els blocs amb fase, dates i hores, i el d\'avui destacat', async () => {
   await renderObjectius();
   expect(await screen.findByText('Setmana 3 · específica')).toBeOnTheScreen();
@@ -197,4 +182,32 @@ test('Demana un macro nou: confirma, insereix la petició i ho diu; una petició
   ]);
   await renderObjectius();
   expect(await screen.findByText(/ja hi ha un macro d'avui/)).toBeOnTheScreen();
+});
+
+// --- S2b: temps objectiu de l'app, ritme derivat, notes -------------------
+
+test('un objectiu amb només el temps central mostra "—" als altres escenaris i el ritme derivat', async () => {
+  mockGoals.mockResolvedValue([
+    {
+      id: 5, name: '10 km Bombers', discipline: 'run', event_date: '2026-11-15', priority: 'A', status: 'active',
+      notes: 'vull baixar de 37', profile: { segments: [{ sport: 'run', distance_m: 10000 }], target_times_sec: { total: [null, 2190, null] } },
+    },
+  ]);
+  mockLogistics.mockResolvedValue([]);
+  await renderObjectius();
+  expect(await screen.findByText('36:30')).toBeOnTheScreen();
+  expect(screen.getAllByText('—')).toHaveLength(2);
+  expect(screen.getByText('≈ 3:39/km')).toBeOnTheScreen();
+  // les notes de l'objectiu principal es veuen
+  expect(screen.getByText('Per al coach')).toBeOnTheScreen();
+  expect(screen.getByText('vull baixar de 37')).toBeOnTheScreen();
+});
+
+test('Fornells: ritme derivat per segment (natació per 100 m) i les notes dels altres objectius', async () => {
+  await renderObjectius();
+  await screen.findByText(/Artiem/);
+  expect(screen.getByText('≈ 2:18/100 m')).toBeOnTheScreen(); // 1380 s / 1000 m
+  expect(screen.getByText('≈ 4:00/km')).toBeOnTheScreen();     // 2160 s / 9 km
+  expect(screen.queryByText('Per al coach')).toBeNull();        // Fornells no té notes
+  expect(screen.getByText('quan surti')).toBeOnTheScreen();     // notes del 10 km popular
 });

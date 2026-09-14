@@ -15,14 +15,14 @@ Garmin Connect ──sync──▶ Postgres (Supabase) ◀──── app mòbi
                               │        ▲
                         pla + dades    │ informe validat
                               ▼        │
-                        coach (Claude) ─┘   14 regles dures, 3 intents
+                        coach (Claude) ─┘   15 regles dures, 3 intents
 ```
 
 | Peça | Carpeta | Què fa |
 |---|---|---|
 | Ingesta | `ingest/` | Baixa activitats i mètriques diàries de Garmin, calcula càrrega (TRIMP) i forma (CTL/ATL/TSB), lliga cada activitat amb la sessió del pla |
 | Pla | `seeds/`, `coach/plan_loader.py` | El pla és dades, no text: blocs, sessions amb estructura (escalfament, sèries, objectius de ritme), prioritat, tests |
-| Coach | `coach/` | Construeix el context, crida l'API de Claude amb sortida estructurada (`contracts/`), valida el resultat amb 14 regles (`rules.py`) i el desa. Prompts versionats a `coach/prompts/` |
+| Coach | `coach/` | Construeix el context, crida l'API de Claude amb sortida estructurada (`contracts/`), valida el resultat amb 15 regles (`rules.py`) i el desa. Prompts versionats a `coach/prompts/` |
 | Base de dades | `supabase/migrations/`, `migrate.py` | Migracions SQL numerades, aplicades amb un script propi. RLS: l'app només llegeix i escriu el que li toca |
 | App | `app/` | Expo Router + TypeScript. Pestanyes Avui / Setmana / Forma / Objectius, login, detall d'activitat amb RPE i notes |
 | Servidor MCP | `mcp_server/` | Exposa les dades a assistents (setmana, forma, compliment) |
@@ -30,7 +30,7 @@ Garmin Connect ──sync──▶ Postgres (Supabase) ◀──── app mòbi
 
 ## Per on mirar
 
-1. `SPEC-entrenador-triatlo.md`: què és, model de dades, les 14 regles del coach, fases.
+1. `SPEC-entrenador-triatlo.md`: què és, model de dades, les 15 regles del coach, fases.
 2. `docs/decisions.md`: per què cada cosa és com és (decisions amb data).
 3. `coach/run.py` i `coach/rules.py`: el cor. Generació de l'informe i validació.
 4. `app/app/(tabs)/index.tsx`: la pantalla Avui.
@@ -67,4 +67,7 @@ make report      # últim informe del coach
   d'un bloc, i les regles jutgen contra les hores reals de les últimes setmanes.
 - Macro: el coach proposa els blocs del pla (fases, dates, hores) fins a
   l'objectiu i la recuperació, amb Opus, a petició des de l'app; s'aprova a Avui.
+- Perfil de l'atleta (pestanya Jo): dia de descans, hores i dies disponibles,
+  piscina, notes per al coach; el validador (R15) i el macro els respecten.
+  Temps objectiu i notes per objectiu; el coach els jutja amb les marques reals.
 - Pendent: setmana rodant (S4b), multiusuari i TestFlight.

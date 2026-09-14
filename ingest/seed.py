@@ -78,6 +78,19 @@ def resolve_chains(rows: list[dict]) -> list[tuple]:
     return chains
 
 
+def extra_profile_for(data: dict) -> dict:
+    """Seccions del YAML que viatgen dins del perfil de l'objectiu. L'athlete_context
+    NO: és de l'atleta (athlete.profile), no de la cursa, i ha de sobreviure-la."""
+    extra = {k: data[k] for k in ("race_day_protocol", "pacing_rules") if k in data}
+    extra["source"] = data.get("source")
+    return extra
+
+
+def upsert_athlete_profile(conn, context: dict) -> None:
+    conn.execute("update athlete set profile = %s, updated_at = now() where id = 1",
+                 (_jsonb(context),))
+
+
 def upsert_goal(conn, g: dict, extra_profile: dict) -> int:
     profile = dict(g.get("profile") or {})
     profile.update(extra_profile)
@@ -183,13 +196,10 @@ def main() -> None:
             sys.exit("El pla viu ja té versions del coach: el seed ja no és la veritat "
                      "(docs/post-cursa-design.md). --force per sobreescriure-les.")
 
-    extra_profile = {k: data[k] for k in
-                     ("athlete_context", "race_day_protocol", "pacing_rules")
-                     if k in data}
-    extra_profile["source"] = data.get("source")
-
     with psycopg.connect(url) as conn, conn.transaction():
-        goal_id = upsert_goal(conn, data["goal"], extra_profile)
+        if "athlete_context" in data:
+            upsert_athlete_profile(conn, data["athlete_context"])
+        goal_id = upsert_goal(conn, data["goal"], extra_profile_for(data))
 
         all_rows: list[dict] = []
         ids: dict[tuple, int] = {}

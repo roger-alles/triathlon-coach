@@ -133,3 +133,15 @@ test('emoji de modalitat per llegir la setmana d\'un cop d\'ull', () => {
   expect(sportEmoji('strength')).toBe('🏋️');
   expect(sportEmoji('desconegut')).toBe('');
 });
+
+test('parseClock: mm:ss i h:mm:ss en segons; el que no ho és, null', () => {
+  const { parseClock, pace } = require('./format');
+  expect(parseClock('36:30')).toBe(2190);
+  expect(parseClock('1:05:00')).toBe(3900);
+  expect(parseClock(' 36:30.5 ')).toBe(2191);
+  expect(parseClock('')).toBeNull();
+  expect(parseClock('36')).toBeNull();
+  expect(parseClock('36:70')).toBeNull();
+  expect(parseClock('abc')).toBeNull();
+  expect(pace(219)).toBe('3:39');
+});

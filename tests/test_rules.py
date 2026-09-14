@@ -522,3 +522,43 @@ def test_r8_pla_parcial_avisa_en_lloc_de_bloquejar():
     r8 = [v for v in out if v.rule == "R8"]
     assert r8 and all(not v.blocking for v in r8)
     assert any("parcial" in v.message for v in r8)
+
+
+# ─── R15: disponibilitat declarada per l'atleta (athlete.profile.constraints) ──
+
+def _r15(plan, profile, reference=None):
+    athlete = Athlete(name="Roger", max_hr=211, profile=profile)
+    return [v for v in validate_plan(plan, athlete, History(), [],
+                                     reference_date=reference or min(s.local_date for s in plan))
+            if v.rule == "R15"]
+
+
+def test_r15_sostre_hores_declarat_avisa_no_bloqueja():
+    b = mk_block(MON, weeks=2)
+    plan = steady_week(MON, 7.5, b) + steady_week(MON + timedelta(weeks=1), 9.0, b)
+    out = _r15(plan, {"constraints": {"weekly_hours_ceiling": 8}})
+    assert len(out) == 1 and not out[0].blocking
+    assert str(MON + timedelta(weeks=1)) in out[0].message and "sostre de 8" in out[0].message
+
+
+def test_r15_dia_de_descans_fix_i_dies_disponibles():
+    b = mk_block(MON)
+    plan = steady_week(MON, 6.0, b)  # descans dilluns; sessions dt, dc, dv, ds
+    # el dia fix és dimarts i hi ha sessió → avís
+    out = _r15(plan, {"constraints": {"fixed_rest_day": "tuesday"}})
+    assert len(out) == 1 and "dimarts" in out[0].message and not out[0].blocking
+    # només dilluns-divendres disponibles: la sessió de dissabte avisa
+    out = _r15(plan, {"constraints": {"available_days": ["monday", "tuesday", "wednesday",
+                                                          "thursday", "friday"]}})
+    assert len(out) == 1 and "dissabte" in out[0].message
+
+
+def test_r15_sense_perfil_o_setmana_passada_no_diu_res():
+    b = mk_block(MON, weeks=2)
+    plan = steady_week(MON, 9.0, b) + steady_week(MON + timedelta(weeks=1), 9.0, b)
+    assert _r15(plan, {}) == []
+    assert _r15(plan, {"constraints": {}}) == []
+    # la primera setmana ja ha passat: només s'avisa de la segona
+    out = _r15(plan, {"constraints": {"weekly_hours_ceiling": 8}},
+               reference=MON + timedelta(weeks=1))
+    assert len(out) == 1 and str(MON + timedelta(weeks=1)) in out[0].message

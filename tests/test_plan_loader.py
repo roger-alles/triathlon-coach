@@ -15,7 +15,7 @@ from coach.rules import validate_plan
 SEED = Path(__file__).parent.parent / "seeds" / "fornells-2026.yaml"
 
 
-def test_fornells_plan_passes_all_14_rules():
+def test_fornells_plan_passes_all_15_rules():
     plan, goal = plan_from_yaml(SEED)
     athlete = Athlete(name="Roger", max_hr=211)  # sense FTP/CSS/llindar, com a la realitat
     plan_start = min(s.local_date for s in plan)
@@ -71,7 +71,8 @@ class _DbConn:
         if "from goal" in s:
             rows = self.goals
         elif "from athlete" in s:
-            rows = [("Roger", 211, None, None, None)]
+            rows = [("Roger", 211, None, None, None,
+                     {"constraints": {"weekly_hours_ceiling": 8}})]
         elif "from plan_block" in s:
             rows = self.blocks
         elif "sum(duration_sec)" in s:
@@ -133,3 +134,10 @@ def test_plan_from_db_returns_blocks_with_goal_and_real_history_up_to_today():
     assert history.long_by_week == {date(2026, 9, 7): {"bike": 4432.0, "run": 827.0}}
     # la finestra d'història acaba al dilluns d'avui i comença 8 setmanes abans
     assert conn.weekly_params == (date(2026, 9, 14), date(2026, 7, 20))
+
+
+def test_plan_from_db_loads_the_athlete_profile():
+    from coach.plan_loader import plan_from_db
+
+    _, _, _, athlete, _ = plan_from_db(_DbConn(goals=[]), today=date(2026, 9, 14))
+    assert athlete.profile == {"constraints": {"weekly_hours_ceiling": 8}}

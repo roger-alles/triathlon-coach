@@ -520,3 +520,29 @@ test('sendRequest insereix la petició; getRequests torna les últimes', async (
   expect(chain2.order).toHaveBeenCalledWith('created_at', { ascending: false });
   expect(chain2.limit).toHaveBeenCalledWith(3);
 });
+
+// --- S2b: perfil de l'atleta ----------------------------------------------
+
+test('getAthlete llegeix la fila 1 amb el perfil (buit si és null)', async () => {
+  const { getAthlete } = require('./api');
+  const row = { id: 1, name: 'Roger', birth_date: '2005-01-01', max_hr: 211, profile: null };
+  const chain = chainResolving({ data: row, error: null }, 'maybeSingle');
+  mockFrom.mockReturnValue(chain);
+  const a = await getAthlete();
+  expect(mockFrom).toHaveBeenCalledWith('athlete');
+  expect(chain.select).toHaveBeenCalledWith('id, name, birth_date, max_hr, profile');
+  expect(chain.eq).toHaveBeenCalledWith('id', 1);
+  expect(a).toEqual({ ...row, profile: {} });
+});
+
+test('updateAthleteProfile escriu només la columna profile de la fila 1', async () => {
+  const { updateAthleteProfile } = require('./api');
+  const chain = chainResolving({ error: null });
+  chain.update = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  const profile = { constraints: { weekly_hours_ceiling: 7 }, notes: 'vacances a l’agost' };
+  await updateAthleteProfile(profile);
+  expect(mockFrom).toHaveBeenCalledWith('athlete');
+  expect(chain.update).toHaveBeenCalledWith({ profile });
+  expect(chain.eq).toHaveBeenCalledWith('id', 1);
+});

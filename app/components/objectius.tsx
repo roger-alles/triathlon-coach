@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GoalForm from '@/components/goal-form';
 import { ThemedText } from '@/components/themed-text';
-import { AthleteRequest, Goal, LogisticsTask, PlanBlockFull, getBlocks, getGoals, getLogistics, getRequests, getSetting, localDateISO, sendRequest, setLogisticsDone, setSetting } from '@/lib/api';
-import { daysUntil, formatClock, sportLabel } from '@/lib/format';
+import { AthleteRequest, Goal, LogisticsTask, PlanBlockFull, getBlocks, getGoals, getLogistics, getRequests, localDateISO, sendRequest, setLogisticsDone } from '@/lib/api';
+import { daysUntil, formatClock, pace, sportLabel } from '@/lib/format';
 
 const SCENARIOS = ['Prudent', 'Objectiu', 'Gran dia'];
 const TIME_ROWS: [string, string][] = [
@@ -28,6 +28,18 @@ function ddmm(iso: string): string {
   return `${d}/${m}`;
 }
 
+// Ritme de l'escenari "Objectiu" d'una fila de temps, si es coneix la distància
+// del segment: cursa i bici per km, natació per 100 m.
+function derivedPace(key: string, sec: number | null, segments: any[] | undefined): string | null {
+  if (sec == null || !Array.isArray(segments)) return null;
+  const sport = key === 'total' ? (segments.length === 1 ? segments[0].sport : null) : key;
+  const seg = segments.find((s: any) => s.sport === sport);
+  if (!seg || !seg.distance_m) return null;
+  if (sport === 'swim') return `≈ ${pace((sec / seg.distance_m) * 100)}/100 m`;
+  if (sport === 'run' || sport === 'bike') return `≈ ${pace((sec / seg.distance_m) * 1000)}/km`;
+  return null;
+}
+
 const PHASE_LABEL: Record<string, string> = {
   base: 'base', build: 'construcció', peak: 'pic', taper: 'afinament', race: 'cursa',
   recovery: 'recuperació', transition: 'transició',
@@ -37,7 +49,6 @@ export default function Objectius() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [logistics, setLogistics] = useState<LogisticsTask[]>([]);
   const [editing, setEditing] = useState<Goal | 'new' | null>(null);
-  const [applyMode, setApplyMode] = useState<string | null>(null);
   const [blocks, setBlocks] = useState<PlanBlockFull[]>([]);
   const [requests, setRequests] = useState<AthleteRequest[]>([]);
   const [requested, setRequested] = useState(false);
@@ -61,7 +72,6 @@ export default function Objectius() {
       const gs = await getGoals();
       setGoals(gs);
       setLogistics(gs.length > 0 ? await getLogistics(gs[0].id) : []);
-      setApplyMode((await getSetting('coach_apply_mode')) ?? 'dry_run');
       const [bs, rs] = await Promise.all([getBlocks(), getRequests(3)]);
       setBlocks(bs);
       setRequests(rs);
@@ -101,28 +111,6 @@ export default function Objectius() {
 
   const goal = goals[0] ?? null;
   const others = goals.slice(1);
-
-  const toggleApplyMode = (on: boolean) => {
-    const write = async (mode: 'dry_run' | 'hybrid') => {
-      const before = applyMode;
-      setApplyMode(mode);
-      try {
-        await setSetting('coach_apply_mode', mode);
-      } catch (e) {
-        setApplyMode(before);
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    };
-    if (!on) return write('dry_run');
-    Alert.alert(
-      'Activar el mode híbrid?',
-      'El coach aplicarà sol els canvis petits (com a molt 2 sessions, 3 dies, mai una clau, mai més càrrega) i et demanarà permís per a la resta. Tot es pot desfer des d’Avui el mateix dia.',
-      [
-        { text: 'Cancel·la', style: 'cancel' },
-        { text: 'Activa', style: 'default', onPress: () => write('hybrid') },
-      ]
-    );
-  };
 
   const askMacro = () => {
     Alert.alert(
@@ -182,22 +170,6 @@ export default function Objectius() {
     </>
   );
 
-  const coachSettings = (
-    <>
-      <ThemedText style={styles.sectionTitle}>Coach</ThemedText>
-      <View style={styles.card}>
-        <View style={styles.switchRow}>
-          <ThemedText style={styles.switchLabel}>El coach aplica els canvis (mode híbrid)</ThemedText>
-          <Switch value={applyMode === 'hybrid'} onValueChange={toggleApplyMode} />
-        </View>
-        <ThemedText style={styles.switchHelp}>
-          {applyMode === 'hybrid'
-            ? 'Mode híbrid: els canvis petits s’apliquen sols; els grans esperen el teu Aplica a Avui.'
-            : 'Mode prova: el coach proposa i ho veus a Avui, però no toca el pla.'}
-        </ThemedText>
-      </View>
-    </>
-  );
   const newButton = (
     <TouchableOpacity style={styles.newButton} onPress={() => setEditing('new')}>
       <ThemedText style={styles.newButtonText}>Nou objectiu</ThemedText>
@@ -210,7 +182,6 @@ export default function Objectius() {
         <ThemedText>{error ?? 'Cap objectiu actiu.'}</ThemedText>
         {newButton}
         {planSection}
-        {coachSettings}
       </ScrollView>
     );
   }
@@ -250,6 +221,13 @@ export default function Objectius() {
         </View>
       )}
 
+      {goal.notes && (
+        <View style={styles.card}>
+          <ThemedText style={styles.notesTitle}>Per al coach</ThemedText>
+          <ThemedText style={styles.notes}>{goal.notes}</ThemedText>
+        </View>
+      )}
+
       <ThemedText style={styles.sectionTitle}>Temps objectiu</ThemedText>
       <View style={styles.card}>
         <View style={styles.timeRow}>
@@ -260,16 +238,22 @@ export default function Objectius() {
             </ThemedText>
           ))}
         </View>
-        {TIME_ROWS.filter(([k]) => Array.isArray(times[k])).map(([key, label]) => (
-          <View key={key} style={styles.timeRow}>
-            <ThemedText style={[styles.timeLabel, key === 'total' && styles.timeTotal]}>{label}</ThemedText>
-            {times[key].map((sec: number, i: number) => (
-              <ThemedText key={i} style={[styles.timeCell, key === 'total' && styles.timeTotal]}>
-                {formatClock(sec)}
-              </ThemedText>
-            ))}
-          </View>
-        ))}
+        {TIME_ROWS.filter(([k]) => Array.isArray(times[k])).map(([key, label]) => {
+          const derived = derivedPace(key, times[key][1] ?? null, p.segments);
+          return (
+            <View key={key}>
+              <View style={styles.timeRow}>
+                <ThemedText style={[styles.timeLabel, key === 'total' && styles.timeTotal]}>{label}</ThemedText>
+                {times[key].map((sec: number | null, i: number) => (
+                  <ThemedText key={i} style={[styles.timeCell, key === 'total' && styles.timeTotal]}>
+                    {sec == null ? '—' : formatClock(sec)}
+                  </ThemedText>
+                ))}
+              </View>
+              {derived && <ThemedText style={styles.derivedPace}>{derived}</ThemedText>}
+            </View>
+          );
+        })}
         {times.note && <ThemedText style={styles.note}>{times.note}</ThemedText>}
       </View>
 
@@ -336,13 +320,13 @@ export default function Objectius() {
               <ThemedText style={styles.goalMeta}>
                 {sportLabel(g.discipline === 'triathlon' ? 'multisport' : g.discipline)} · {shortDate(g.event_date)}
               </ThemedText>
+              {g.notes && <ThemedText style={styles.goalNotes}>{g.notes}</ThemedText>}
             </View>
           </TouchableOpacity>
         ))}
         {newButton}
       </View>
 
-      {coachSettings}
     </ScrollView>
   );
 }
@@ -368,6 +352,10 @@ const styles = StyleSheet.create({
   timeHeader: { fontWeight: '700', fontSize: 12, opacity: 0.7 },
   timeTotal: { fontWeight: '800' },
   note: { fontSize: 12, opacity: 0.6, marginTop: 4 },
+  derivedPace: { fontSize: 12, opacity: 0.6, textAlign: 'right', marginTop: -2 },
+  notesTitle: { fontSize: 12, fontWeight: '700', opacity: 0.7 },
+  notes: { fontSize: 14 },
+  goalNotes: { fontSize: 12, opacity: 0.6, fontStyle: 'italic' },
   logisticsRow: { paddingVertical: 4 },
   logistics: { fontSize: 14 },
   logisticsDone: { opacity: 0.5, textDecorationLine: 'line-through' },
@@ -393,7 +381,4 @@ const styles = StyleSheet.create({
   blockCurrent: { backgroundColor: 'rgba(46,158,91,0.12)' },
   phaseChip: { fontSize: 11, fontWeight: '700', paddingVertical: 3, paddingHorizontal: 8, borderRadius: 10, backgroundColor: 'rgba(127,127,127,0.15)', overflow: 'hidden' },
   working: { fontSize: 13, fontStyle: 'italic', opacity: 0.8, marginTop: 4 },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  switchLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
-  switchHelp: { fontSize: 12, opacity: 0.7 },
 });

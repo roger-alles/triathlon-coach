@@ -14,6 +14,7 @@ class Athlete:
     css_sec_per_100m: float | None = None
     threshold_pace_sec_km: float | None = None
     zones: dict = field(default_factory=dict)
+    profile: dict = field(default_factory=dict)  # el que l'atleta declara de si mateix (constraints, health, notes…)
 
 
 @dataclass

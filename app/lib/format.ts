@@ -44,10 +44,21 @@ export function distance(m: number): string {
   return `${Number.isInteger(km) ? km : km.toFixed(1).replace('.', ',')} km`;
 }
 
-function pace(sec: number): string {
+export function pace(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.round(sec % 60);
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+// "36:30" o "1:05:00" -> segons; null si no és un temps.
+export function parseClock(text: string): number | null {
+  const m = text.trim().match(/^(?:(\d{1,2}):)?(\d{1,2}):(\d{2}(?:\.\d+)?)$/);
+  if (!m) return null;
+  const h = m[1] ? Number(m[1]) : 0;
+  const min = Number(m[2]);
+  const sec = Number(m[3]);
+  if (min > 59 || sec >= 60) return null;
+  return Math.round(h * 3600 + min * 60 + sec);
 }
 
 export function formatTarget(t: Target): string {

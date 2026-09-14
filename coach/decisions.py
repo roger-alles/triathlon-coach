@@ -7,7 +7,7 @@ L'app insereix files a coach_decision; aquí es reclamen una per una
 transacció:
 
   apply    només sobre un informe 'proposed'. Es torna a validar contra el pla
-           VIU (semàntica + 14 regles): la proposta pot haver caducat si un
+           VIU (semàntica + 15 regles): la proposta pot haver caducat si un
            diari ha tocat el pla entremig. Si passa, apply_to_db amb l'id de
            la decisió als efectes; l'informe passa a 'applied'.
   discard  només sobre 'proposed' → 'discarded'.
@@ -154,7 +154,8 @@ def process_decision(conn, decision: tuple, plan_loader=plan_from_db) -> str:
         today = date.today()
         errors = semantic_errors(changes, plan_by_id, athlete, blocks)
         if not errors and block_changes:
-            errors += block_errors(block_changes, blocks, goals, history, today, plan=active)
+            errors += block_errors(block_changes, blocks, goals, history, today, plan=active,
+                                   athlete=athlete)
         if not errors and active:
             preexisting = blocking_signatures(active, athlete, history, goals, today)
             candidate = apply_changes(active, changes, blocks)
