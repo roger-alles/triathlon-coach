@@ -2,6 +2,49 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-14 — Contracte v1.4: camps opcionals → obligatoris i nullables; esforç i sostres
+
+Assajant en sec el setmanal (S4b) han sortit tres coses, totes verificades
+amb sondes petites contra l'API. (1) **Cap informe havia produït mai un
+`new_session`**: amb els camps opcionals al schema, Sonnet ometia
+`new_session` als `add` (i fins i tot escrivia `add` sense res, quatre
+intents seguits). Amb `plan_session_id`, `new_session` i `new_date`
+obligatoris però nullables (`null` explícit als keep/move/cancel), i el
+mateix dins de `new_session` i a `block_changes`, l'emet sempre, també
+quan se li demana compacte. És el contracte v1.4 (`$comment` al schema).
+(2) `output_config.effort`: `medium` corromp la sortida estructurada (text
+amb caràcters aleatoris, camps omesos) — mai per sota de `high`, que és el
+que sempre havia corregut. `COACH_EFFORT` al `.env` per pujar-lo. (3) Un
+intent es va quedar en bucle escrivint `\n` dins d'un string JSON fins als
+64k tokens (0,64 €): el sostre del setmanal i del macro baixa a 32k (una
+setmana sencera són ~13k) i el missatge de tall porta el cap i la cua del
+text per diagnosticar; si totes les tandes es tallen, l'informe s'escriu
+igualment (abans petava). Resultat: el setmanal simulat del 27/09 escriu
+la setmana de recuperació sencera (7 sessions, descans dilluns, 4 h amb
+l'Alpe d'Huez) al primer intent, sense cap bloqueig.
+
+## 2026-09-14 — S4b: el setmanal escriu la setmana següent dins del bloc
+
+El bloc de recuperació (S3) era buit i el setmanal (`weekly-v1`) només sabia
+ajustar setmanes ja escrites. Decisions: (1) prompt `weekly-v2` (versions
+per tipus a `PROMPT_VERSION`): el snapshot porta `week_to_write` (dilluns,
+diumenge, sessions vives, bloc amb hores objectiu); si la setmana és buida
+el coach l'escriu sencera amb un `add` per sessió, descans obligatori (R5),
+pressupost d'hores del bloc i sostre de l'atleta, repartiment per disciplina
+i fase; si ja té sessions, l'ajusta com abans. (2) Guarda semàntica: un
+`add` del setmanal fora de `[dilluns, diumenge]` és error; `scope = week`.
+(3) `write_report` rep el dia real: abans el setmanal li passava el dilluns
+vinent i la finestra queia una setmana tard (sense test; ara en té).
+(4) Els objectius actius amb `event_date` passada es donen per fets al
+començament de cada informe: l'endemà de la cursa Fornells passa a
+`completed` i el següent A amb data (Transpirinenca) governa; no cal cap
+botó. (5) `apply_to_db` conserva el `rationale` propi de la sessió nova.
+(6) App: la targeta de proposta mostra el resum, les sessions noves
+("+ dl 28/09 · Natació suau · 30 min"), un "Per què" amb el raonament i les
+preguntes del coach amb caixa de resposta (també per al macro, que fins ara
+no es podia respondre). (7) El macro diu on queden els objectius fora del
+seu horitzó. `--today` a `coach.run` per assajar en sec un altre dia.
+
 ## 2026-09-14 — Macro buit: el rationale i el JSON han de dir el mateix
 
 El primer macro real (Sonnet) va sortir com a "proposta" sense cap

@@ -70,13 +70,19 @@
         "type": "object",
         "additionalProperties": false,
         "required": [
+          "plan_session_id",
           "action",
+          "new_session",
+          "new_date",
           "reason"
         ],
         "properties": {
           "plan_session_id": {
-            "type": "integer",
-            "description": "Sessió d'origen. Obligatori per a keep/modify/replace/move/cancel; no s'usa per a add."
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "id de la sessió del pla; null NOMÉS per a add"
           },
           "action": {
             "enum": [
@@ -89,70 +95,119 @@
             ]
           },
           "new_session": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "sport",
-              "session_type",
-              "title",
-              "structure_json"
-            ],
-            "description": "Obligatori per a modify/replace/add",
-            "properties": {
-              "sport": {
-                "enum": [
-                  "swim",
-                  "bike",
-                  "run",
-                  "strength",
-                  "brick",
-                  "multisport",
-                  "rest"
-                ]
-              },
-              "session_type": {
-                "type": "string"
-              },
-              "title": {
-                "type": "string"
-              },
-              "structure_json": {
-                "type": "string",
-                "description": "L'estructura de la sessió (contracte §6: steps o segments) serialitzada com a string JSON"
-              },
-              "duration_sec_target": {
-                "type": "integer"
-              },
-              "distance_m_target": {
-                "type": "number"
-              },
-              "priority": {
-                "enum": [
-                  "key",
-                  "support",
-                  "optional"
-                ]
-              },
-              "rationale": {
-                "type": "string"
-              },
-              "local_date": {
-                "type": "string",
-                "description": "Només per a add: dia de la sessió nova (YYYY-MM-DD), dins d'un bloc existent"
-              },
-              "parent_of_day": {
-                "enum": [
-                  "swim",
-                  "bike",
-                  "run"
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sport",
+                  "session_type",
+                  "title",
+                  "structure_json",
+                  "duration_sec_target",
+                  "distance_m_target",
+                  "priority",
+                  "rationale",
+                  "local_date",
+                  "parent_of_day"
                 ],
-                "description": "Només per a add d'un brick: esport de la sessió del mateix dia de què penja"
+                "description": "Obligatori per a modify/replace/add",
+                "properties": {
+                  "sport": {
+                    "enum": [
+                      "swim",
+                      "bike",
+                      "run",
+                      "strength",
+                      "brick",
+                      "multisport",
+                      "rest"
+                    ]
+                  },
+                  "session_type": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "structure_json": {
+                    "type": "string",
+                    "description": "L'estructura de la sessió (contracte §6: steps o segments) serialitzada com a string JSON"
+                  },
+                  "duration_sec_target": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "description": "durada total prevista en segons (null si no aplica)"
+                  },
+                  "distance_m_target": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "description": "distància total prevista en metres (null si no aplica)"
+                  },
+                  "priority": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "key",
+                          "support",
+                          "optional"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "key | support | optional (null = support)"
+                  },
+                  "rationale": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "per què aquesta sessió aquest dia (null si no cal)"
+                  },
+                  "local_date": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "YYYY-MM-DD; només per a add (dins d'un bloc existent); null a la resta"
+                  },
+                  "parent_of_day": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "swim",
+                          "bike",
+                          "run"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "swim | bike | run: només per a un brick (la sessió d'aquell esport del mateix dia de què penja); null a la resta"
+                  }
+                }
+              },
+              {
+                "type": "null"
               }
-            }
+            ],
+            "description": "null per a keep/move/cancel; complet per a add/modify/replace"
           },
           "new_date": {
-            "type": "string",
-            "description": "Obligatori per a move (YYYY-MM-DD)"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "YYYY-MM-DD; només per a move, null a la resta"
           },
           "reason": {
             "type": "string"
@@ -180,6 +235,8 @@
         "additionalProperties": false,
         "required": [
           "action",
+          "block_id",
+          "new_block",
           "reason"
         ],
         "properties": {
@@ -191,54 +248,66 @@
             ]
           },
           "block_id": {
-            "type": "integer",
-            "description": "Bloc existent; obligatori per a modify/cancel"
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "id del bloc; null NOMÉS per a add"
           },
           "reason": {
             "type": "string"
           },
           "new_block": {
-            "type": "object",
-            "additionalProperties": false,
-            "description": "Obligatori per a add (complet); per a modify, només els camps que canvien",
-            "properties": {
-              "phase": {
-                "enum": [
-                  "base",
-                  "build",
-                  "peak",
-                  "taper",
-                  "race",
-                  "recovery",
-                  "transition"
-                ]
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Obligatori per a add (complet); per a modify, només els camps que canvien",
+                "properties": {
+                  "phase": {
+                    "enum": [
+                      "base",
+                      "build",
+                      "peak",
+                      "taper",
+                      "race",
+                      "recovery",
+                      "transition"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "start_date": {
+                    "type": "string",
+                    "description": "YYYY-MM-DD"
+                  },
+                  "end_date": {
+                    "type": "string",
+                    "description": "YYYY-MM-DD"
+                  },
+                  "intent": {
+                    "type": "string",
+                    "description": "què busca el bloc, en una frase"
+                  },
+                  "target_weekly_hours": {
+                    "type": "number"
+                  },
+                  "fallback": {
+                    "type": "string",
+                    "description": "si la setmana se't torça, salva X"
+                  }
+                }
               },
-              "name": {
-                "type": "string"
-              },
-              "start_date": {
-                "type": "string",
-                "description": "YYYY-MM-DD"
-              },
-              "end_date": {
-                "type": "string",
-                "description": "YYYY-MM-DD"
-              },
-              "intent": {
-                "type": "string",
-                "description": "què busca el bloc, en una frase"
-              },
-              "target_weekly_hours": {
-                "type": "number"
-              },
-              "fallback": {
-                "type": "string",
-                "description": "si la setmana se't torça, salva X"
+              {
+                "type": "null"
               }
-            }
+            ],
+            "description": "null per a cancel; complet per a add; només els camps que canvien per a modify"
           }
         }
       }
     }
-  }
+  },
+  "$comment": "v1.4 (14/09/2026): els camps opcionals de session_changes, new_session i block_changes passen a obligatoris però nullables. Verificat amb sondes: amb camps opcionals, Sonnet ometia new_session als add (cap informe n'havia produït mai cap); amb null explícit, l'emet sempre."
 }

@@ -52,6 +52,7 @@ from coach.structure import validate_structure
 ROOT = Path(__file__).parent.parent
 MAX_ATTEMPTS = 3  # 1 proposta + 2 correccions (spec §7 pas 4)
 MACRO_MODEL = "claude-opus-5"  # el macro és car i poc freqüent: el millor model
+PROMPT_VERSION = {"daily": "v1", "weekly": "v2", "macro": "v1"}
 
 NEW_SESSION_REQUIRED = ("sport", "session_type", "title", "structure_json")
 ADD_REQUIRED = NEW_SESSION_REQUIRED + ("local_date",)
@@ -98,7 +99,8 @@ def _parse_new_session(new_session: dict, where: str, required: tuple,
 
 
 def semantic_errors(changes: list[dict], plan_by_id: dict[int, Session],
-                    athlete: Athlete, blocks: list[Block] | None = None) -> list[str]:
+                    athlete: Athlete, blocks: list[Block] | None = None,
+                    week: tuple[date, date] | None = None) -> list[str]:
     """Errors de forma que no cal cap regla per detectar.
 
     Efecte lateral volgut: si structure_json parseja bé, es deixa parsejada a
@@ -139,6 +141,9 @@ def semantic_errors(changes: list[dict], plan_by_id: dict[int, Session],
             if blocks is not None and block_for(blocks, day) is None:
                 errors.append(f"{where}: cap bloc cobreix {day}; cal un macro "
                               f"que creï el bloc abans d'afegir-hi sessions")
+            if week is not None and not week[0] <= day <= week[1]:
+                errors.append(f"{where}: {day} és fora de la setmana que s'escriu; el "
+                              f"setmanal només afegeix sessions del {week[0]} al {week[1]}")
             parent = new_session.get("parent_of_day")
             if parent and (day, parent) not in live_day_sport | added:
                 errors.append(f"{where}: parent_of_day '{parent}' però el {day} no hi ha "
@@ -186,7 +191,7 @@ def apply_changes(plan: list[Session], changes: list[dict],
                 session_type=ns["session_type"], title=ns["title"],
                 structure=ns["structure"], block=block_for(known_blocks, day),
                 duration_sec_target=ns.get("duration_sec_target"),
-                priority=ns.get("priority", "support"),
+                priority=(ns.get("priority") or "support"),
                 chained=bool(ns.get("parent_of_day")))
             continue
         session = candidate[change["plan_session_id"]]
@@ -247,7 +252,8 @@ def blocking_signatures(plan: list[Session], athlete: Athlete, history: History,
 def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
                 athlete: Athlete, history: History, goals: list,
                 today: date, report_type: str,
-                blocks: list[Block] | None = None) -> dict:
+                blocks: list[Block] | None = None,
+                week: tuple[date, date] | None = None) -> dict:
     """Passos 2-5 del bucle. Pur respecte de la DB: tot entra per paràmetre."""
     active = [s for s in plan if s.status not in ("cancelled", "moved")]
     if blocks is None:
@@ -268,9 +274,15 @@ def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
             output, usage = llm.generate(system, messages, report_type)
         except OutputCutOff as e:
             # sense JSON de fiar: una tanda d'infraccions més, i que sigui breu
-            hint = ("un macro porta session_changes: [] i NOMÉS block_changes; "
-                    "rationale de 2500 caràcters com a molt"
-                    if report_type == "macro" else "sigues més compacte, keep sense comentaris")
+            if report_type == "macro":
+                hint = ("un macro porta session_changes: [] i NOMÉS block_changes; "
+                        "rationale de 2500 caràcters com a molt")
+            elif report_type == "weekly":
+                hint = ("escriu només la setmana que toca amb add compactes (structure_json "
+                        "curt), keep sense comentaris, rationale de 2500 caràcters com a molt")
+            else:
+                hint = "sigues més compacte, keep sense comentaris"
+            print(f"[tall] {e}")
             validation_history.append([f"resposta tallada per longitud ({e}): {hint}"])
             messages += [{"role": "user", "content": _feedback_message(validation_history[-1])}]
             continue
@@ -280,7 +292,8 @@ def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
 
         block_changes = output.get("block_changes") or []
         errors = _macro_shape_errors(output) if report_type == "macro" else []
-        errors += semantic_errors(output["session_changes"], plan_by_id, athlete, blocks)
+        errors += semantic_errors(output["session_changes"], plan_by_id, athlete, blocks,
+                                  week=week)
         cycle_blocks = blocks
         if block_changes:
             errors += block_errors(block_changes, blocks, goals, history, today, plan=active,
@@ -309,6 +322,14 @@ def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
                      {"role": "user", "content": _feedback_message(errors)}]
 
     # cap intent vàlid: es descarta la proposta, el pla existent mana (spec §7.5)
+    if output is None:   # totes les tandes tallades: informe buit però escrivible
+        output = {"schema_version": "1.3", "report_type": report_type,
+                  "readiness": {"verdict": "amber", "drivers": ["sense resposta vàlida del model"],
+                                "confidence": "low"},
+                  "summary": "El coach no ha pogut respondre (resposta tallada)",
+                  "rationale": "; ".join(e for errs in validation_history for e in errs),
+                  "session_changes": [], "flags": ["resposta tallada en tots els intents"],
+                  "questions_for_athlete": []}
     return {"accepted": False, "output": output, "usage": total_usage,
             "validation_errors": validation_history, "warnings": []}
 
@@ -377,8 +398,8 @@ def apply_to_db(conn, report_id: int, changes: list[dict], decision_id=None) -> 
             returning id""",
             (block[1], block[0], day, ns["sport"], ns["session_type"], ns["title"],
              json.dumps(ns["structure"]), ns.get("duration_sec_target"),
-             ns.get("distance_m_target"), ns.get("priority", "support"),
-             change["reason"])).fetchone()[0]
+             ns.get("distance_m_target"), (ns.get("priority") or "support"),
+             ns.get("rationale") or change["reason"])).fetchone()[0]
         created_by_day_sport[(day, ns["sport"])] = new_id
         if ns.get("parent_of_day"):
             pending_chains.append((new_id, day, ns["parent_of_day"]))
@@ -511,6 +532,13 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
     # ocioses: mantenir-ne una oberta durant la crida al model (1-3 min) va
     # perdre dos informes ja generats el 30-31/08.
     with psycopg.connect(url) as conn:
+        # una cursa passada ja no governa res: l'objectiu es dona per fet i el
+        # següent A amb data pren el relleu (primary_goal)
+        done = conn.execute("""update goal set status = 'completed'
+                               where status = 'active' and event_date < %s""",
+                            (today,)).rowcount
+        if done:
+            print(f"{done} objectiu(s) amb data passada donats per fets")
         snapshot = build_context(conn, today, report_for=target)
         if report_type in ("weekly", "macro"):
             snapshot["mode"] = report_type
@@ -520,18 +548,20 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
         mode = "dry_run" if dry_run else apply_mode(conn)
 
     model = os.getenv("COACH_MODEL_MACRO", MACRO_MODEL) if report_type == "macro" else None
+    week = (target, target + timedelta(days=6)) if report_type == "weekly" else None
     result = coach_cycle(
-        llm=CoachLLM(model=model), system=load_prompt(f"{report_type}-v1"),
+        llm=CoachLLM(model=model),
+        system=load_prompt(f"{report_type}-{PROMPT_VERSION[report_type]}"),
         context_json=json.dumps(snapshot, ensure_ascii=False),
         plan=plan, athlete=athlete, history=history, goals=goals,
-        today=today, report_type=report_type, blocks=blocks)
+        today=today, report_type=report_type, blocks=blocks, week=week)
 
     # Auto o proposta? Es classifica sempre (també en dry_run: l'app ho ensenya
     # com a "mode prova"), però només s'aplica en mode hybrid. Un macro (blocs)
     # mai s'aplica sol.
     classification = None
     proposal_status = "none"
-    scope = "macro" if report_type == "macro" else "sessions"
+    scope = {"macro": "macro", "weekly": "week"}.get(report_type, "sessions")
     if result["accepted"]:
         active = {s.id: s for s in plan if s.status not in ("cancelled", "moved")}
         classification = classify(result["output"]["session_changes"], active,
@@ -554,7 +584,7 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
     with psycopg.connect(url) as conn:
         try:
             with conn.transaction():
-                report_id = write_report(conn, report_type, snapshot, result, target,
+                report_id = write_report(conn, report_type, snapshot, result, today,
                                          proposal_status=proposal_status, scope=scope,
                                          classification=classification, window_end=window_end)
                 if proposal_status == "auto_applied":
@@ -563,7 +593,7 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
         except StaleProposal as e:
             result["validation_errors"].append([f"no aplicat: {e}"])
             with conn.transaction():
-                report_id = write_report(conn, report_type, snapshot, result, target,
+                report_id = write_report(conn, report_type, snapshot, result, today,
                                          proposal_status="failed", scope=scope,
                                          classification=classification, window_end=window_end)
             proposal_status = "failed"
@@ -600,13 +630,16 @@ def main() -> None:
                         help="cicle complet però sense tocar el pla")
     parser.add_argument("--tomorrow", action="store_true",
                         help="preview del vespre: el context es construeix per a demà")
+    parser.add_argument("--today", type=date.fromisoformat, default=None,
+                        help="simular que avui és aquest dia (proves en sec)")
     args = parser.parse_args()
 
     load_dotenv(ROOT / ".env")
     url = os.getenv("DATABASE_URL")
     if not url:
         sys.exit("Falta DATABASE_URL al .env.")
-    run_report(args.report_type, url=url, dry_run=args.dry_run, tomorrow=args.tomorrow)
+    run_report(args.report_type, url=url, today=args.today, dry_run=args.dry_run,
+               tomorrow=args.tomorrow)
 
 
 if __name__ == "__main__":

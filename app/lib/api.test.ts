@@ -400,8 +400,11 @@ test("l'informe porta la proposta: només els canvis que no són keep, amb estat
     blockChanges: [],
     changes: [
       { plan_session_id: 43, action: 'move', new_date: '2026-09-11', reason: 'no es pot saltar' },
-      { plan_session_id: 44, action: 'modify', reason: 'retallar', new_session: { sport: 'run', title: 'Rodatge 25 min', duration_sec_target: 1500 } },
+      { plan_session_id: 44, action: 'modify', reason: 'retallar', new_session: { sport: 'run', title: 'Rodatge 25 min', session_type: 'easy', duration_sec_target: 1500 } },
     ],
+    summary: 'Mou la natació a demà.',
+    rationale: '',
+    questions: [],
   });
 });
 
@@ -424,6 +427,57 @@ test('getOpenProposals: només estats oberts dels últims 7 dies, més recents p
   expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
   expect(out).toHaveLength(1);
   expect(out[0].changes).toHaveLength(2);
+});
+
+test('getOpenProposals: un add sense plan_session_id es conserva amb dia i tipus; resum, raonament i preguntes viatgen', async () => {
+  const { getOpenProposals } = require('./api');
+  const weeklyRow = {
+    ...changesRow, id: 41, report_type: 'weekly', scope: 'week', proposal_status: 'proposed',
+    output: {
+      summary: 'Setmana de recuperació: 3 h, tot suau',
+      rationale: 'Després de la cursa toca pair.',
+      questions_for_athlete: ['Com tens el genoll?'],
+      session_changes: [
+        { action: 'add', reason: 'descans obligatori', new_session: { sport: 'rest', session_type: 'full', title: 'Descans', structure_json: '{"steps": []}', local_date: '2026-09-28' } },
+        { action: 'add', reason: 'suau', new_session: { sport: 'swim', session_type: 'easy', title: 'Natació suau', structure_json: '{}', local_date: '2026-09-29', duration_sec_target: 2400, priority: 'support', rationale: 'moure les cames' } },
+      ],
+    },
+  };
+  const chain = chainResolving({ data: [weeklyRow], error: null });
+  chain.in = jest.fn(() => chain);
+  chain.gte = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  const [p] = await getOpenProposals('2026-09-27');
+  expect(p.scope).toBe('week');
+  expect(p.summary).toBe('Setmana de recuperació: 3 h, tot suau');
+  expect(p.rationale).toBe('Després de la cursa toca pair.');
+  expect(p.questions).toEqual(['Com tens el genoll?']);
+  expect(p.changes).toEqual([
+    { action: 'add', reason: 'descans obligatori', new_session: { sport: 'rest', title: 'Descans', local_date: '2026-09-28', session_type: 'full' } },
+    { action: 'add', reason: 'suau', new_session: { sport: 'swim', title: 'Natació suau', local_date: '2026-09-29', session_type: 'easy', duration_sec_target: 2400, priority: 'support', rationale: 'moure les cames' } },
+  ]);
+  expect(p.changes[0].plan_session_id).toBeUndefined();
+});
+
+test('getAnswersForReports agrupa les respostes per informe; buit no consulta', async () => {
+  const { getAnswersForReports } = require('./api');
+  const rows = [
+    { id: 1, report_id: 7, question: 'a?', answer: 'x' },
+    { id: 2, report_id: 9, question: 'b?', answer: 'y' },
+    { id: 3, report_id: 7, question: 'c?', answer: 'z' },
+  ];
+  const chain = chainResolving({ data: rows, error: null });
+  chain.in = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  const map = await getAnswersForReports([7, 9, 7]);
+  expect(mockFrom).toHaveBeenCalledWith('athlete_answer');
+  expect(chain.in).toHaveBeenCalledWith('report_id', [7, 9]);
+  expect(chain.order).toHaveBeenCalledWith('id');
+  expect(map.get(7)).toEqual([{ id: 1, question: 'a?', answer: 'x' }, { id: 3, question: 'c?', answer: 'z' }]);
+  expect(map.get(9)).toEqual([{ id: 2, question: 'b?', answer: 'y' }]);
+  mockFrom.mockClear();
+  expect((await getAnswersForReports([])).size).toBe(0);
+  expect(mockFrom).not.toHaveBeenCalled();
 });
 
 test('getSessionsByIds demana només els ids donats; buit no consulta', async () => {

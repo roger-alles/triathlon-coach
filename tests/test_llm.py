@@ -71,6 +71,8 @@ def test_generate_passes_schema_and_system_and_parses():
     assert first["cache_control"] == {"type": "ephemeral"}
     assert sent["max_tokens"] == MAX_TOKENS["daily"] == 16000
     assert fake.via == "create"
+    # el raonament adaptatiu comparteix el sostre de tokens: esforç acotat
+    assert sent["output_config"]["effort"] == "high"
 
 
 def test_weekly_gets_a_bigger_budget_through_streaming():
@@ -79,7 +81,7 @@ def test_weekly_gets_a_bigger_budget_through_streaming():
     llm = CoachLLM(client=fake, model="claude-sonnet-5")
     llm.generate(system="s", messages=[{"role": "user", "content": "{}"}],
                  report_type="weekly")
-    assert fake.kwargs["max_tokens"] == MAX_TOKENS["weekly"] == 64000
+    assert fake.kwargs["max_tokens"] == MAX_TOKENS["weekly"] == 32000
     assert fake.via == "stream"
 
 
@@ -89,7 +91,9 @@ def test_cut_off_output_is_a_specific_error_the_loop_can_feed_back():
     with pytest.raises(OutputCutOff) as e:
         llm.generate(system="s", messages=[{"role": "user", "content": "{}"}])
     # el missatge diu què s'ha gastat: tokens generats i caràcters de JSON vs raonament
-    assert "700 generats" in str(e.value) and "raonament" in str(e.value)
+    msg = str(e.value)
+    assert "700 tokens generats" in msg and "caràcters de JSON" in msg
+    assert '"schema_version"' in msg   # el cap del text tallat, per diagnosticar
 
 
 def test_other_incomplete_stops_still_raise():
@@ -129,11 +133,15 @@ def test_output_schema_v12_allows_add_without_plan_session_id():
     from coach.llm import OUTPUT_SCHEMA
     item = OUTPUT_SCHEMA["properties"]["session_changes"]["items"]
     assert "add" in item["properties"]["action"]["enum"]
-    assert "plan_session_id" not in item["required"]
-    assert set(item["required"]) == {"action", "reason"}
-    ns = item["properties"]["new_session"]["properties"]
-    assert ns["local_date"]["type"] == "string"
-    assert set(ns["parent_of_day"]["enum"]) == {"swim", "bike", "run"}
+    # v1.4: obligatoris però nullables (null explícit als keep/move/cancel):
+    # amb camps opcionals el model ometia new_session als add
+    assert set(item["required"]) == {"plan_session_id", "action", "new_session", "new_date", "reason"}
+    assert item["properties"]["plan_session_id"]["type"] == ["integer", "null"]
+    ns = item["properties"]["new_session"]["anyOf"][0]
+    assert "local_date" in ns["required"] and "priority" in ns["required"]
+    props = ns["properties"]
+    assert props["local_date"]["type"] == ["string", "null"]
+    assert set(props["parent_of_day"]["anyOf"][0]["enum"]) == {"swim", "bike", "run"}
     assert "macro" in OUTPUT_SCHEMA["properties"]["report_type"]["enum"]
 
 
@@ -143,8 +151,16 @@ def test_output_schema_v13_has_block_changes_for_the_macro():
     assert "block_changes" not in OUTPUT_SCHEMA["required"]
     bc = OUTPUT_SCHEMA["properties"]["block_changes"]["items"]
     assert set(bc["properties"]["action"]["enum"]) == {"add", "modify", "cancel"}
-    assert set(bc["required"]) == {"action", "reason"}
-    nb = bc["properties"]["new_block"]["properties"]
+    assert set(bc["required"]) == {"action", "block_id", "new_block", "reason"}
+    nb = bc["properties"]["new_block"]["anyOf"][0]["properties"]
     assert {"phase", "name", "start_date", "end_date", "intent", "target_weekly_hours", "fallback"} <= set(nb)
     assert set(nb["phase"]["enum"]) == {"base", "build", "peak", "taper", "race", "recovery", "transition"}
-    assert MAX_TOKENS["macro"] == 64000
+    assert MAX_TOKENS["macro"] == 32000   # 14/09: acota el cost d'un bucle (abans 64k)
+
+
+def test_effort_comes_from_the_environment(monkeypatch):
+    monkeypatch.setenv("COACH_EFFORT", "xhigh")
+    fake = _FakeClient()
+    llm = CoachLLM(client=fake, model="claude-sonnet-5")
+    llm.generate(system="s", messages=[{"role": "user", "content": "{}"}])
+    assert fake.kwargs["output_config"]["effort"] == "xhigh"

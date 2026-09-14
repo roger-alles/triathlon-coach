@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
 
+import QuestionRow from '@/components/question-row';
 import { ThemedText } from '@/components/themed-text';
-import { BlockChange, Decision, Proposal, SessionChange, SessionRef, parseLocalISO } from '@/lib/api';
+import { AthleteAnswer, BlockChange, Decision, Proposal, SessionChange, SessionRef, parseLocalISO } from '@/lib/api';
 import { formatDuration, sportEmoji } from '@/lib/format';
 
 // Una proposta del coach (un informe amb canvis al pla) i què en fa l'atleta.
@@ -14,6 +15,11 @@ const WEEKDAY_SHORT = ['Dg', 'Dl', 'Dt', 'Dc', 'Dj', 'Dv', 'Ds'];
 function shortDay(iso: string): string {
   const d = parseLocalISO(iso);
   return `${WEEKDAY_SHORT[d.getDay()]} ${d.getDate()}`;
+}
+// Una sessió nova (add): dia curt en minúscula i data, perquè encara no té fila.
+const WEEKDAY_TINY = ['dg', 'dl', 'dt', 'dc', 'dj', 'dv', 'ds'];
+function tinyDay(iso: string): string {
+  return `${WEEKDAY_TINY[parseLocalISO(iso).getDay()]} ${ddmm(iso)}`;
 }
 
 const REPORT_LABEL: Record<string, string> = { daily: 'diari', weekly: 'setmanal', replan: 'petició', macro: 'macro' };
@@ -28,6 +34,8 @@ type Props = {
   decision?: Decision;
   applyMode: string;
   onDecide: (kind: Decision['decision']) => Promise<void>;
+  answers?: AthleteAnswer[];
+  onAnswer?: (question: string, text: string) => Promise<void>;
 };
 
 function ddmm(iso: string): string {
@@ -35,9 +43,10 @@ function ddmm(iso: string): string {
   return `${d}/${m}`;
 }
 
-export default function ProposalCard({ proposal, sessions, blocks, decision, applyMode, onDecide }: Props) {
+export default function ProposalCard({ proposal, sessions, blocks, decision, applyMode, onDecide, answers = [], onAnswer }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showWhy, setShowWhy] = useState(false);
 
   const inFlight = decision && (decision.status === 'pending' || decision.status === 'processing');
   const status = proposal.status;
@@ -85,13 +94,39 @@ export default function ProposalCard({ proposal, sessions, blocks, decision, app
         Proposta del coach · {REPORT_LABEL[proposal.reportType] ?? proposal.reportType} · {when}
       </ThemedText>
       {statusLine && <ThemedText style={[styles.status, status === 'proposed' && styles.statusPending]}>{statusLine}</ThemedText>}
+      {proposal.summary ? <ThemedText style={styles.summary}>{proposal.summary}</ThemedText> : null}
 
       {(proposal.blockChanges ?? []).map((b, i) => (
         <BlockRow key={`b${i}`} change={b} block={b.block_id != null ? blocks?.get(b.block_id) : undefined} />
       ))}
       {proposal.changes.map((c, i) => (
-        <ChangeRow key={i} change={c} session={sessions.get(c.plan_session_id)} />
+        <ChangeRow key={i} change={c} session={c.plan_session_id != null ? sessions.get(c.plan_session_id) : undefined} />
       ))}
+
+      {proposal.rationale ? (
+        <>
+          <TouchableOpacity onPress={() => setShowWhy((v) => !v)}>
+            <ThemedText style={styles.whyLink}>{showWhy ? 'Amaga' : 'Per què'}</ThemedText>
+          </TouchableOpacity>
+          {showWhy && <ThemedText style={styles.rationale}>{proposal.rationale}</ThemedText>}
+        </>
+      ) : null}
+
+      {(proposal.questions ?? []).length > 0 && (
+        <View style={styles.questions}>
+          <ThemedText style={styles.questionsTitle}>El coach et pregunta</ThemedText>
+          {proposal.questions.map((q, i) => (
+            <QuestionRow
+              key={i}
+              question={q}
+              existing={answers.find((a) => a.question === q)?.answer}
+              onSend={async (text) => {
+                if (onAnswer) await onAnswer(q, text);
+              }}
+            />
+          ))}
+        </View>
+      )}
 
       {proposal.classification && !proposal.classification.auto && proposal.classification.reasons.length > 0 &&
         (status === 'proposed' || status === 'none') && (
@@ -147,6 +182,17 @@ function BlockRow({ change, block }: { change: BlockChange; block?: BlockRef }) 
 }
 
 function ChangeRow({ change, session }: { change: SessionChange; session?: SessionRef }) {
+  if (change.action === 'add' && change.new_session) {
+    const n = change.new_session;
+    const when = n.local_date ? `${tinyDay(n.local_date)} · ` : '';
+    const dur = n.duration_sec_target != null ? ` · ${formatDuration(n.duration_sec_target)}` : '';
+    return (
+      <View style={styles.change}>
+        <ThemedText style={styles.head}>{`+ ${when}${sportEmoji(n.sport)} ${n.title}${dur}`}</ThemedText>
+        {change.reason ? <ThemedText style={styles.reason}>{change.reason}</ThemedText> : null}
+      </View>
+    );
+  }
   const head = session
     ? `${sportEmoji(session.sport)} ${shortDay(session.local_date)} · ${session.title}`
     : `Sessió #${change.plan_session_id}`;
@@ -175,6 +221,11 @@ const styles = StyleSheet.create({
   what: { fontSize: 14, marginLeft: 12 },
   reason: { fontSize: 13, opacity: 0.7, fontStyle: 'italic', marginLeft: 12 },
   why: { fontSize: 12, opacity: 0.7 },
+  summary: { fontSize: 15, fontWeight: '600' },
+  whyLink: { color: '#3b82c4', fontSize: 13, fontWeight: '600' },
+  rationale: { fontSize: 14, lineHeight: 20 },
+  questions: { gap: 6, marginTop: 4 },
+  questionsTitle: { fontSize: 14, fontWeight: '700' },
   inFlight: { fontSize: 13, fontStyle: 'italic', opacity: 0.8 },
   error: { color: '#d64541', fontSize: 13 },
   row: { flexDirection: 'row', gap: 10, justifyContent: 'flex-end' },

@@ -17,6 +17,9 @@ const proposal = {
   status: 'proposed' as const,
   classification: { auto: false, reasons: ['toca una sessió clau'] },
   blockChanges: [],
+  summary: '',
+  rationale: '',
+  questions: [],
   changes: [
     { plan_session_id: 43, action: 'move' as const, new_date: '2026-09-11', reason: 'no es pot saltar' },
     { plan_session_id: 44, action: 'modify' as const, reason: 'guardar cames', new_session: { sport: 'run', title: 'Rodatge 25 min', duration_sec_target: 1500 } },
@@ -105,4 +108,49 @@ test('un macro pinta els blocs: nou, modificat i cancel·lat, amb la raó', asyn
   expect(screen.getByText(/× Setmana 3/)).toBeOnTheScreen();
   expect(screen.getByText(/cal descansar/)).toBeOnTheScreen();
   expect(screen.getByText('Aplica')).toBeOnTheScreen();
+});
+
+// --- S4b: setmana rodant — sessions noves, resum, "Per què" i preguntes ------
+
+const weekly = {
+  ...proposal, id: 41, reportType: 'weekly', scope: 'week' as const,
+  summary: 'Setmana de recuperació: 3 h, tot suau, descans dilluns',
+  rationale: 'La cursa ha deixat les cames buides: aquesta setmana només es tracta de pair.',
+  questions: ['Com tens el genoll després de la cursa?'],
+  changes: [
+    { action: 'add' as const, reason: 'descans obligatori', new_session: { sport: 'rest', title: 'Descans', local_date: '2026-09-28', session_type: 'full' } },
+    { action: 'add' as const, reason: 'moure les cames', new_session: { sport: 'swim', title: 'Natació suau', local_date: '2026-09-29', session_type: 'easy', duration_sec_target: 2400 } },
+  ],
+};
+
+test('una setmana nova pinta cada sessió afegida amb dia, esport, títol i durada, i el resum', async () => {
+  await render(<ProposalCard proposal={weekly} sessions={new Map()} applyMode="hybrid" onDecide={jest.fn()} />);
+  expect(screen.getByText(/Proposta del coach · setmanal/)).toBeOnTheScreen();
+  expect(screen.getByText('Setmana de recuperació: 3 h, tot suau, descans dilluns')).toBeOnTheScreen();
+  expect(screen.getByText(/\+ dl 28\/09 · 🛌 Descans/)).toBeOnTheScreen();
+  expect(screen.getByText(/\+ dt 29\/09 · 🏊 Natació suau · 40 min/)).toBeOnTheScreen();
+  expect(screen.getByText(/moure les cames/)).toBeOnTheScreen();
+  expect(screen.queryByText(/Sessió #/)).toBeNull();
+});
+
+test('"Per què" desplega el raonament del coach, amagat per defecte', async () => {
+  await render(<ProposalCard proposal={weekly} sessions={new Map()} applyMode="hybrid" onDecide={jest.fn()} />);
+  expect(screen.queryByText(/cames buides/)).toBeNull();
+  const user = userEvent.setup();
+  await user.press(screen.getByText('Per què'));
+  expect(screen.getByText(/cames buides/)).toBeOnTheScreen();
+  await user.press(screen.getByText('Amaga'));
+  expect(screen.queryByText(/cames buides/)).toBeNull();
+});
+
+test('les preguntes del coach es responen des de la targeta; una ja resposta es mostra', async () => {
+  const onAnswer = jest.fn().mockResolvedValue(undefined);
+  await render(<ProposalCard proposal={weekly} sessions={new Map()} applyMode="hybrid" onDecide={jest.fn()} answers={[]} onAnswer={onAnswer} />);
+  expect(screen.getByText('El coach et pregunta')).toBeOnTheScreen();
+  const user = userEvent.setup();
+  await user.type(screen.getByPlaceholderText(/Respon/), 'Bé, cap molèstia');
+  await user.press(screen.getByText('Envia'));
+  await waitFor(() => expect(onAnswer).toHaveBeenCalledWith('Com tens el genoll després de la cursa?', 'Bé, cap molèstia'));
+  await render(<ProposalCard proposal={weekly} sessions={new Map()} applyMode="hybrid" onDecide={jest.fn()} answers={[{ id: 1, question: 'Com tens el genoll després de la cursa?', answer: 'Perfecte' }]} onAnswer={onAnswer} />);
+  expect(screen.getByText(/Tu: Perfecte/)).toBeOnTheScreen();
 });

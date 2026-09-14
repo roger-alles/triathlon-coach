@@ -70,4 +70,7 @@ make report      # últim informe del coach
 - Perfil de l'atleta (pestanya Jo): dia de descans, hores i dies disponibles,
   piscina, notes per al coach; el validador (R15) i el macro els respecten.
   Temps objectiu i notes per objectiu; el coach els jutja amb les marques reals.
-- Pendent: setmana rodant (S4b), multiusuari i TestFlight.
+- Setmana rodant: diumenge el coach escriu la setmana següent dins del bloc
+  (o l'ajusta si ja existeix); s'aprova a Avui amb el raonament i les
+  preguntes del coach a la targeta. Els objectius passats es donen per fets.
+- Pendent: multiusuari i TestFlight.
