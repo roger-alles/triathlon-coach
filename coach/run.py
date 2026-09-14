@@ -39,17 +39,19 @@ from pathlib import Path
 import psycopg
 from dotenv import load_dotenv
 
+from coach.blocks import apply_block_changes, block_errors
 from coach.classify import classify
 from coach.context import build_context
 from coach.llm import CoachLLM, OutputCutOff, load_prompt
 from coach.plan_loader import plan_from_db
 from coach.models import Athlete, Block, History, Session, Violation
-from coach.rules import validate_plan
+from coach.rules import primary_goal, validate_plan
 from coach.settings import apply_mode
 from coach.structure import validate_structure
 
 ROOT = Path(__file__).parent.parent
 MAX_ATTEMPTS = 3  # 1 proposta + 2 correccions (spec §7 pas 4)
+MACRO_MODEL = "claude-opus-5"  # el macro és car i poc freqüent: el millor model
 
 NEW_SESSION_REQUIRED = ("sport", "session_type", "title", "structure_json")
 ADD_REQUIRED = NEW_SESSION_REQUIRED + ("local_date",)
@@ -257,8 +259,15 @@ def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
         total_usage["output_tokens"] += usage["output_tokens"]
 
         errors = semantic_errors(output["session_changes"], plan_by_id, athlete, blocks)
+        block_changes = output.get("block_changes") or []
+        cycle_blocks = blocks
+        if block_changes:
+            errors += block_errors(block_changes, blocks, goals, history, today, plan=active)
+            if not errors:
+                cycle_blocks = [b for b in apply_block_changes(blocks, block_changes)
+                                if b.status != "cancelled"]
         if not errors:
-            candidate = apply_changes(active, output["session_changes"], blocks)
+            candidate = apply_changes(active, output["session_changes"], cycle_blocks)
             violations = validate_plan(candidate, athlete, history, goals,
                                        reference_date=today,
                                        plan_start=min(s.local_date for s in active))
@@ -430,7 +439,7 @@ SUMMARY_PREFIX = {
 
 def write_report(conn, report_type: str, snapshot: dict, result: dict, today: date,
                  *, proposal_status: str, scope: str = "sessions",
-                 classification: dict | None = None) -> int:
+                 classification: dict | None = None, window_end: date | None = None) -> int:
     """Desa l'informe i en retorna l'id (per lligar-hi efectes i decisions)."""
     output = result["output"]
     summary_md = f"## {output['summary']}\n\n{output['rationale']}"
@@ -443,6 +452,8 @@ def write_report(conn, report_type: str, snapshot: dict, result: dict, today: da
     if report_type == "weekly":
         monday = _next_monday(today)
         window = (monday, monday + timedelta(days=6))
+    elif report_type == "macro":
+        window = (today + timedelta(days=1), window_end or today + timedelta(weeks=12))
     else:
         window = (today, today + timedelta(days=3))
     return conn.execute("""
@@ -460,10 +471,106 @@ def write_report(conn, report_type: str, snapshot: dict, result: dict, today: da
          if classification is not None else None)).fetchone()[0]
 
 
-def main() -> None:
+def run_report(report_type: str, *, url: str, today: date | None = None,
+               dry_run: bool = False, tomorrow: bool = False) -> int:
+    """Un cicle sencer (context → model → validació → persistir). Retorna l'id
+    de l'informe. Cridat per main (CLI) i per coach.decisions (peticions)."""
+    today = today or date.today()
+    # el preview mira demà, però la validació "res al passat" segueix ancorada
+    # al dia real: les sessions d'avui encara no són passat a les 21:30.
+    # El setmanal (diumenge) parla de la setmana que comença demà: bloc i
+    # finestra del dilluns vinent. El macro parla d'avui en endavant.
+    if report_type == "weekly":
+        target = _next_monday(today)
+    else:
+        target = today + timedelta(days=1) if tomorrow else today
 
+    # Connexió curta només per llegir. El pooler de Supabase mata connexions
+    # ocioses: mantenir-ne una oberta durant la crida al model (1-3 min) va
+    # perdre dos informes ja generats el 30-31/08.
+    with psycopg.connect(url) as conn:
+        snapshot = build_context(conn, today, report_for=target)
+        if report_type in ("weekly", "macro"):
+            snapshot["mode"] = report_type
+        elif tomorrow:
+            snapshot["mode"] = "evening_preview"
+        plan, goals, history, athlete, blocks = plan_from_db(conn, today)
+        mode = "dry_run" if dry_run else apply_mode(conn)
+
+    model = os.getenv("COACH_MODEL_MACRO", MACRO_MODEL) if report_type == "macro" else None
+    result = coach_cycle(
+        llm=CoachLLM(model=model), system=load_prompt(f"{report_type}-v1"),
+        context_json=json.dumps(snapshot, ensure_ascii=False),
+        plan=plan, athlete=athlete, history=history, goals=goals,
+        today=today, report_type=report_type, blocks=blocks)
+
+    # Auto o proposta? Es classifica sempre (també en dry_run: l'app ho ensenya
+    # com a "mode prova"), però només s'aplica en mode hybrid. Un macro (blocs)
+    # mai s'aplica sol.
+    classification = None
+    proposal_status = "none"
+    scope = "macro" if report_type == "macro" else "sessions"
+    if result["accepted"]:
+        active = {s.id: s for s in plan if s.status not in ("cancelled", "moved")}
+        classification = classify(result["output"]["session_changes"], active,
+                                  today, blocking=[], blocks=blocks,
+                                  block_changes=result["output"].get("block_changes") or []
+                                  ).to_dict()
+        if mode == "hybrid":
+            proposal_status = "auto_applied" if classification["auto"] else "proposed"
+        if report_type == "macro" and proposal_status == "auto_applied":
+            proposal_status = "proposed"   # un macro mai s'aplica sol, ni buit
+    goal = primary_goal(goals)
+    window_end = goal.event_date if (goal and goal.event_date and goal.event_date > today) else None
+
+    # Segona connexió curta per persistir: informe + canvis + efectes, tot o res.
+    applied = 0
+    report_id = None
+    with psycopg.connect(url) as conn:
+        try:
+            with conn.transaction():
+                report_id = write_report(conn, report_type, snapshot, result, target,
+                                         proposal_status=proposal_status, scope=scope,
+                                         classification=classification, window_end=window_end)
+                if proposal_status == "auto_applied":
+                    applied = len(apply_to_db(conn, report_id,
+                                              result["output"]["session_changes"]))
+        except StaleProposal as e:
+            result["validation_errors"].append([f"no aplicat: {e}"])
+            with conn.transaction():
+                report_id = write_report(conn, report_type, snapshot, result, target,
+                                         proposal_status="failed", scope=scope,
+                                         classification=classification, window_end=window_end)
+            proposal_status = "failed"
+
+    output = result["output"]
+    status = "ACCEPTAT" if result["accepted"] else "DESCARTAT"
+    print(f"[{status}] {report_type} · model {result['usage']['model']} · "
+          f"{result['usage']['input_tokens']} in / {result['usage']['output_tokens']} out "
+          f"· {len(result['validation_errors'])} tandes d'infraccions · "
+          f"mode {mode} · {proposal_status} · {applied} efectes · informe {report_id}")
+    print(f"\nSemàfor: {output['readiness']['verdict'].upper()} "
+          f"({', '.join(output['readiness']['drivers']) or 'sense drivers'})")
+    print(f"\n{output['summary']}\n\n{output['rationale']}")
+    if output.get("block_changes"):
+        print("\nBlocs:")
+        for c in output["block_changes"]:
+            nb = c.get("new_block") or {}
+            print(f"  - {c['action']} {c.get('block_id') or ''} {nb.get('phase', '')} "
+                  f"{nb.get('name', '')} {nb.get('start_date', '')}–{nb.get('end_date', '')} "
+                  f"{nb.get('target_weekly_hours', '')} h · {c.get('reason', '')}")
+    if output.get("questions_for_athlete"):
+        print("\nPreguntes per a tu:")
+        for q in output["questions_for_athlete"]:
+            print(f"  - {q}")
+    if output.get("flags"):
+        print(f"\nFlags: {output['flags']}")
+    return report_id
+
+
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("report_type", choices=["daily", "weekly"])
+    parser.add_argument("report_type", choices=["daily", "weekly", "macro"])
     parser.add_argument("--dry-run", action="store_true",
                         help="cicle complet però sense tocar el pla")
     parser.add_argument("--tomorrow", action="store_true",
@@ -474,78 +581,7 @@ def main() -> None:
     url = os.getenv("DATABASE_URL")
     if not url:
         sys.exit("Falta DATABASE_URL al .env.")
-    today = date.today()
-    # el preview mira demà, però la validació "res al passat" segueix ancorada
-    # al dia real: les sessions d'avui encara no són passat a les 21:30.
-    # El setmanal (diumenge) parla de la setmana que comença demà: bloc i
-    # finestra del dilluns vinent.
-    if args.report_type == "weekly":
-        target = _next_monday(today)
-    else:
-        target = today + timedelta(days=1) if args.tomorrow else today
-
-    # Connexió curta només per llegir. El pooler de Supabase mata connexions
-    # ocioses: mantenir-ne una oberta durant la crida al model (1-3 min) va
-    # perdre dos informes ja generats el 30-31/08.
-    with psycopg.connect(url) as conn:
-        snapshot = build_context(conn, today, report_for=target)
-        if args.report_type == "weekly":
-            snapshot["mode"] = "weekly"
-        elif args.tomorrow:
-            snapshot["mode"] = "evening_preview"
-        plan, goals, history, athlete, blocks = plan_from_db(conn, today)
-        mode = "dry_run" if args.dry_run else apply_mode(conn)
-
-    result = coach_cycle(
-        llm=CoachLLM(), system=load_prompt(f"{args.report_type}-v1"),
-        context_json=json.dumps(snapshot, ensure_ascii=False),
-        plan=plan, athlete=athlete, history=history, goals=goals,
-        today=today, report_type=args.report_type, blocks=blocks)
-
-    # Auto o proposta? Es classifica sempre (també en dry_run: l'app ho ensenya
-    # com a "mode prova"), però només s'aplica en mode hybrid.
-    classification = None
-    proposal_status = "none"
-    if result["accepted"]:
-        active = {s.id: s for s in plan if s.status not in ("cancelled", "moved")}
-        classification = classify(result["output"]["session_changes"], active,
-                                  today, blocking=[], blocks=blocks).to_dict()
-        if mode == "hybrid":
-            proposal_status = "auto_applied" if classification["auto"] else "proposed"
-
-    # Segona connexió curta per persistir: informe + canvis + efectes, tot o res.
-    applied = 0
-    with psycopg.connect(url) as conn:
-        try:
-            with conn.transaction():
-                report_id = write_report(conn, args.report_type, snapshot, result, target,
-                                         proposal_status=proposal_status,
-                                         classification=classification)
-                if proposal_status == "auto_applied":
-                    applied = len(apply_to_db(conn, report_id,
-                                              result["output"]["session_changes"]))
-        except StaleProposal as e:
-            result["validation_errors"].append([f"no aplicat: {e}"])
-            with conn.transaction():
-                write_report(conn, args.report_type, snapshot, result, target,
-                             proposal_status="failed", classification=classification)
-            proposal_status = "failed"
-
-    output = result["output"]
-    status = "ACCEPTAT" if result["accepted"] else "DESCARTAT"
-    print(f"[{status}] {args.report_type} · model {result['usage']['model']} · "
-          f"{result['usage']['input_tokens']} in / {result['usage']['output_tokens']} out "
-          f"· {len(result['validation_errors'])} tandes d'infraccions · "
-          f"mode {mode} · {proposal_status} · {applied} efectes")
-    print(f"\nSemàfor: {output['readiness']['verdict'].upper()} "
-          f"({', '.join(output['readiness']['drivers']) or 'sense drivers'})")
-    print(f"\n{output['summary']}\n\n{output['rationale']}")
-    if output.get("questions_for_athlete"):
-        print("\nPreguntes per a tu:")
-        for q in output["questions_for_athlete"]:
-            print(f"  - {q}")
-    if output.get("flags"):
-        print(f"\nFlags: {output['flags']}")
+    run_report(args.report_type, url=url, dry_run=args.dry_run, tomorrow=args.tomorrow)
 
 
 if __name__ == "__main__":

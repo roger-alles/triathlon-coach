@@ -30,13 +30,47 @@ export type SessionChange = {
 
 export type ProposalStatus = 'none' | 'auto_applied' | 'proposed' | 'applied' | 'discarded' | 'undone' | 'failed';
 
+export type BlockChange = {
+  action: 'add' | 'modify' | 'cancel';
+  block_id?: number;
+  reason: string;
+  new_block?: {
+    phase?: string; name?: string; start_date?: string; end_date?: string;
+    intent?: string; target_weekly_hours?: number; fallback?: string;
+  };
+};
+
 export type Proposal = {
   id: number; // = coach_report.id
   createdAt: string;
   reportType: string;
+  scope: 'sessions' | 'week' | 'macro';
   status: ProposalStatus;
   classification: { auto: boolean; reasons: string[] } | null;
   changes: SessionChange[];
+  blockChanges: BlockChange[];
+};
+
+export type PlanBlockFull = {
+  id: number;
+  goal_id: number;
+  phase: string;
+  name: string | null;
+  start_date: string;
+  end_date: string;
+  target_weekly_hours: number | null;
+  intent: string | null;
+  fallback: string | null;
+  status: 'active' | 'proposed' | 'cancelled';
+};
+
+export type AthleteRequest = {
+  id: number;
+  kind: string;
+  status: 'pending' | 'processing' | 'answered' | 'failed';
+  error: string | null;
+  report_id: number | null;
+  created_at: string;
 };
 
 export type Decision = {
@@ -48,7 +82,7 @@ export type Decision = {
   created_at: string;
 };
 
-const PROPOSAL_COLUMNS = 'id, created_at, window_start, report_type, proposal_status, classification, output';
+const PROPOSAL_COLUMNS = 'id, created_at, window_start, report_type, proposal_status, scope, classification, output';
 
 function proposalOf(row: Record<string, any>): Proposal | null {
   const changes: SessionChange[] = (row.output?.session_changes ?? [])
@@ -65,16 +99,51 @@ function proposalOf(row: Record<string, any>): Proposal | null {
       }
       return out;
     });
-  if (changes.length === 0) return null;
+  const blockChanges: BlockChange[] = (row.output?.block_changes ?? []).map((b: any) => {
+    const out: BlockChange = { action: b.action, reason: b.reason ?? '' };
+    if (b.block_id != null) out.block_id = b.block_id;
+    if (b.new_block) out.new_block = { ...b.new_block };
+    return out;
+  });
+  if (changes.length === 0 && blockChanges.length === 0) return null;
   const cl = row.classification;
   return {
     id: row.id,
     createdAt: row.created_at,
     reportType: row.report_type ?? 'daily',
+    scope: row.scope ?? (blockChanges.length ? 'macro' : 'sessions'),
     status: row.proposal_status ?? 'none',
     classification: cl ? { auto: !!cl.auto, reasons: cl.reasons ?? [] } : null,
     changes,
+    blockChanges,
   };
+}
+
+// Blocs vius del pla (actius i proposats), per data.
+export async function getBlocks(): Promise<PlanBlockFull[]> {
+  const { data, error } = await supabase
+    .from('plan_block')
+    .select('id, goal_id, phase, name, start_date, end_date, target_weekly_hours, intent, fallback, status')
+    .in('status', ['active', 'proposed'])
+    .order('start_date');
+  if (error) throw new Error(error.message);
+  return (data ?? []) as PlanBlockFull[];
+}
+
+// Petició de l'atleta al coach (bústia). El servidor la processa en ≤ 5 min.
+export async function sendRequest(kind: string, payload: Record<string, unknown> = {}): Promise<void> {
+  const { error } = await supabase.from('athlete_request').insert({ kind, payload });
+  if (error) throw new Error(error.message);
+}
+
+export async function getRequests(limit = 3): Promise<AthleteRequest[]> {
+  const { data, error } = await supabase
+    .from('athlete_request')
+    .select('id, kind, status, error, report_id, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as AthleteRequest[];
 }
 
 // Propostes obertes o acabades de resoldre (últims 7 dies), sense el keep.
@@ -242,6 +311,7 @@ export async function getBlockForRange(startISO: string, endISO: string): Promis
   const { data, error } = await supabase
     .from('plan_block')
     .select('phase, name')
+    .eq('status', 'active')
     .lte('start_date', endISO)
     .gte('end_date', startISO)
     .order('start_date')

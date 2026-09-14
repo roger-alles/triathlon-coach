@@ -59,11 +59,13 @@ def _athlete(conn) -> dict:
 
 def _goals(conn, today: date) -> list[dict]:
     out = []
-    for r in conn.execute("""select name, discipline, event_date, priority, profile
+    for r in conn.execute("""select name, discipline, event_date, priority, profile, id, notes
                              from goal where status = 'active'
                              order by priority, event_date nulls last"""):
         profile = r[4] or {}
         out.append({
+            "id": r[5] if len(r) > 5 else None,
+            "notes": r[6] if len(r) > 6 else None,
             "name": r[0], "discipline": r[1],
             "event_date": str(r[2]) if r[2] else None,
             "days_to_event": days_until(r[2], today),
@@ -89,6 +91,29 @@ def block_for(conn, day: date) -> dict | None:
     return {"phase": r[0], "name": r[1], "start_date": str(r[2]), "end_date": str(r[3]),
             "target_weekly_hours": float(r[4]) if r[4] else None,
             "fallback": r[5], "intent": r[6], "return_from_layoff": r[7]}
+
+
+def _macro(conn) -> list[dict]:
+    """Els blocs vius del pla (per al macro i perquè el setmanal sàpiga on escriu)."""
+    cur = conn.execute("""
+        select id, phase, name, start_date, end_date, target_weekly_hours, intent,
+               fallback, status,
+               (select count(*) from plan_session s where s.block_id = plan_block.id
+                  and s.status = 'planned' and s.superseded_by is null) as sessions_planned
+        from plan_block where status in ('active', 'proposed')
+        order by start_date""")
+    return queries._rows_to_dicts(cur)
+
+
+def _history_weeks(conn, today: date) -> list[dict]:
+    """Hores reals per setmana (8 setmanes senceres fins al dilluns d'avui)."""
+    monday = today - timedelta(days=today.weekday())
+    cur = conn.execute("""
+        select date_trunc('week', local_date)::date as monday,
+               round(sum(duration_sec) / 3600.0, 2) as hours
+        from activity where local_date < %s and local_date >= %s
+        group by 1 order by 1""", (monday, monday - timedelta(weeks=8)))
+    return queries._rows_to_dicts(cur)
 
 
 def _recovery(conn, today: date) -> list[dict]:
@@ -201,6 +226,8 @@ def build_context(conn, today: date | None = None,
         "athlete": _athlete(conn),
         "goals": _goals(conn, today),
         "current_block": block_for(conn, report_for),
+        "macro": _macro(conn),
+        "history_weekly_hours": _history_weeks(conn, today),
         "activities_last_28d": queries.recent_activities(conn, RECENT_DAYS),
         "form_curve_28d": queries.form_curve(conn, RECENT_DAYS),
         "recovery_last_14d": _recovery(conn, today),

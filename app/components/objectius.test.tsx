@@ -8,11 +8,14 @@ jest.mock('@/lib/api', () => ({
   abandonGoal: jest.fn(),
   getSetting: jest.fn(),
   setSetting: jest.fn(),
+  getBlocks: jest.fn(),
+  sendRequest: jest.fn(),
+  getRequests: jest.fn(),
 }));
 
 import { fireEvent, render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getGoals, getLogistics, getSetting, setSetting, upsertGoal } from '@/lib/api';
+import { getBlocks, getGoals, getLogistics, getRequests, getSetting, sendRequest, setSetting, upsertGoal } from '@/lib/api';
 import Objectius from './objectius';
 
 const mockGoals = getGoals as jest.Mock;
@@ -69,6 +72,12 @@ beforeEach(() => {
   mockGoals.mockResolvedValue([goal, popular]);
   (getSetting as jest.Mock).mockResolvedValue('dry_run');
   (setSetting as jest.Mock).mockResolvedValue(undefined);
+  (getBlocks as jest.Mock).mockResolvedValue([
+    { id: 7, goal_id: 2, phase: 'peak', name: 'Setmana 3 · específica', start_date: '2026-09-14', end_date: '2026-09-20', target_weekly_hours: 7, intent: null, fallback: null, status: 'active' },
+    { id: 8, goal_id: 2, phase: 'taper', name: 'Setmana 4 · afinada i cursa', start_date: '2026-09-21', end_date: '2026-09-27', target_weekly_hours: 3.5, intent: null, fallback: null, status: 'active' },
+  ]);
+  (getRequests as jest.Mock).mockResolvedValue([]);
+  (sendRequest as jest.Mock).mockResolvedValue(undefined);
   mockLogistics.mockResolvedValue([
     { id: 1, local_date: '2026-09-24', title: 'Revisió completa de material', detail: null, blocking: true, done: false },
   ]);
@@ -162,4 +171,30 @@ test("l'interruptor del coach llegeix el mode, i activar-lo confirma i escriu 'h
   expect(screen.getByText(/mode prova/i)).toBeOnTheScreen();
   fireEvent(sw, 'valueChange', true);
   await waitFor(() => expect(setSetting).toHaveBeenCalledWith('coach_apply_mode', 'hybrid'));
+});
+
+test('la secció Pla mostra els blocs amb fase, dates i hores, i el d\'avui destacat', async () => {
+  await renderObjectius();
+  expect(await screen.findByText('Setmana 3 · específica')).toBeOnTheScreen();
+  expect(screen.getByText(/14\/09 – 20\/09 · 7 h\/set/)).toBeOnTheScreen();
+  expect(screen.getByText(/21\/09 – 27\/09 · 3.5 h\/set/)).toBeOnTheScreen();
+  expect(screen.getByText('pic')).toBeOnTheScreen();
+  expect(screen.getByText('afinament')).toBeOnTheScreen();
+});
+
+test('Demana un macro nou: confirma, insereix la petició i ho diu; una petició fallida ensenya l\'error', async () => {
+  const { Alert } = require('react-native');
+  jest.spyOn(Alert, 'alert').mockImplementation((_t: any, _m: any, buttons: any) => buttons?.find((b: any) => b.style !== 'cancel')?.onPress?.());
+  await renderObjectius();
+  await screen.findByText('Setmana 3 · específica');
+  const user = userEvent.setup();
+  await user.press(screen.getByText('Demana un macro nou'));
+  await waitFor(() => expect(sendRequest).toHaveBeenCalledWith('regenerate_macro', { goal_id: 2 }));
+  expect(await screen.findByText(/El coach hi treballa/)).toBeOnTheScreen();
+
+  (getRequests as jest.Mock).mockResolvedValue([
+    { id: 9, kind: 'regenerate_macro', status: 'failed', error: "ja hi ha un macro d'avui", report_id: null, created_at: '2026-09-16T10:00:00Z' },
+  ]);
+  await renderObjectius();
+  expect(await screen.findByText(/ja hi ha un macro d'avui/)).toBeOnTheScreen();
 });

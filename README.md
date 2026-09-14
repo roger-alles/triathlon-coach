@@ -65,4 +65,6 @@ make report      # últim informe del coach
   proper governa el pla.
 - Validador preparat per al pla rodant: el coach pot crear sessions dins
   d'un bloc, i les regles jutgen contra les hores reals de les últimes setmanes.
-- Pendent: macro i setmana rodant (S3-S4b), multiusuari i TestFlight.
+- Macro: el coach proposa els blocs del pla (fases, dates, hores) fins a
+  l'objectiu i la recuperació, amb Opus, a petició des de l'app; s'aprova a Avui.
+- Pendent: setmana rodant (S4b), multiusuari i TestFlight.

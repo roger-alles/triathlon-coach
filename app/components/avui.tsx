@@ -23,6 +23,7 @@ import {
   Proposal,
   SessionRef,
   getAnswers,
+  getBlocks,
   getDecisions,
   getLatestDailyReport,
   getOpenProposals,
@@ -52,6 +53,7 @@ export default function Avui() {
   const [answers, setAnswers] = useState<AthleteAnswer[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [refs, setRefs] = useState<Map<number, SessionRef>>(new Map());
+  const [blockRefs, setBlockRefs] = useState<Map<number, { id: number; name: string | null; phase: string }>>(new Map());
   const [decisions, setDecisions] = useState<Decision[]>([]);
   const [applyMode, setApplyMode] = useState('dry_run');
   const [error, setError] = useState<string | null>(null);
@@ -73,14 +75,17 @@ export default function Avui() {
       const all = [...(r?.proposal ? [r.proposal] : []), ...open.filter((p) => p.id !== r?.proposal?.id)];
       setProposals(all);
       const ids = all.flatMap((p) => p.changes.map((c) => c.plan_session_id));
-      const [answersNow, refsNow, decisionsNow] = await Promise.all([
+      const needsBlocks = all.some((p) => (p.blockChanges ?? []).length > 0);
+      const [answersNow, refsNow, decisionsNow, blocksNow] = await Promise.all([
         r ? getAnswers(r.id) : Promise.resolve([]),
         getSessionsByIds(ids),
         getDecisions(all.map((p) => p.id)),
+        needsBlocks ? getBlocks() : Promise.resolve([]),
       ]);
       setAnswers(answersNow);
       setRefs(refsNow);
       setDecisions(decisionsNow);
+      setBlockRefs(new Map(blocksNow.map((b) => [b.id, { id: b.id, name: b.name, phase: b.phase }])));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -131,6 +136,7 @@ export default function Avui() {
           key={p.id}
           proposal={p}
           sessions={refs}
+          blocks={blockRefs}
           decision={decisions.find((d) => d.report_id === p.id)}
           applyMode={applyMode}
           onDecide={async (kind) => {

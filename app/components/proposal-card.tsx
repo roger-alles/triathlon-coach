@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Decision, Proposal, SessionChange, SessionRef, parseLocalISO } from '@/lib/api';
+import { BlockChange, Decision, Proposal, SessionChange, SessionRef, parseLocalISO } from '@/lib/api';
 import { formatDuration, sportEmoji } from '@/lib/format';
 
 // Una proposta del coach (un informe amb canvis al pla) i què en fa l'atleta.
@@ -19,15 +19,23 @@ function shortDay(iso: string): string {
 const REPORT_LABEL: Record<string, string> = { daily: 'diari', weekly: 'setmanal', replan: 'petició', macro: 'macro' };
 const DECIDING: Record<Decision['decision'], string> = { apply: 'Aplicant…', discard: 'Descartant…', undo: 'Desfent…' };
 
+type BlockRef = { id: number; name: string | null; phase: string };
+
 type Props = {
   proposal: Proposal;
   sessions: Map<number, SessionRef>;
+  blocks?: Map<number, BlockRef>;
   decision?: Decision;
   applyMode: string;
   onDecide: (kind: Decision['decision']) => Promise<void>;
 };
 
-export default function ProposalCard({ proposal, sessions, decision, applyMode, onDecide }: Props) {
+function ddmm(iso: string): string {
+  const [, m, d] = iso.split('-');
+  return `${d}/${m}`;
+}
+
+export default function ProposalCard({ proposal, sessions, blocks, decision, applyMode, onDecide }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -78,6 +86,9 @@ export default function ProposalCard({ proposal, sessions, decision, applyMode, 
       </ThemedText>
       {statusLine && <ThemedText style={[styles.status, status === 'proposed' && styles.statusPending]}>{statusLine}</ThemedText>}
 
+      {(proposal.blockChanges ?? []).map((b, i) => (
+        <BlockRow key={`b${i}`} change={b} block={b.block_id != null ? blocks?.get(b.block_id) : undefined} />
+      ))}
       {proposal.changes.map((c, i) => (
         <ChangeRow key={i} change={c} session={sessions.get(c.plan_session_id)} />
       ))}
@@ -113,6 +124,24 @@ export default function ProposalCard({ proposal, sessions, decision, applyMode, 
           ) : null}
         </>
       )}
+    </View>
+  );
+}
+
+function BlockRow({ change, block }: { change: BlockChange; block?: BlockRef }) {
+  const nb = change.new_block ?? {};
+  const name = block?.name ?? (change.block_id != null ? `Bloc #${change.block_id}` : nb.name ?? 'Bloc');
+  const dates = nb.start_date && nb.end_date ? ` · ${ddmm(nb.start_date)} – ${ddmm(nb.end_date)}` : '';
+  const hours = nb.target_weekly_hours != null ? ` · ${nb.target_weekly_hours} h/set` : '';
+  const head =
+    change.action === 'add' ? `+ ${nb.name ?? 'Bloc'}${dates}${hours}`
+    : change.action === 'cancel' ? `× ${name}`
+    : `~ ${name}${dates}${hours}`;
+  return (
+    <View style={styles.change}>
+      <ThemedText style={styles.head}>{head}</ThemedText>
+      {nb.intent ? <ThemedText style={styles.what}>{nb.intent}</ThemedText> : null}
+      {change.reason ? <ThemedText style={styles.reason}>{change.reason}</ThemedText> : null}
     </View>
   );
 }

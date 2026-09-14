@@ -32,7 +32,7 @@
 | Sync horari | `1 6-22 * * *` | `coach-job.sh sync`: sync complet perquè els entrenos surtin a l'app en menys d'una hora |
 | Vespre | `30 21 * * *` | `coach-job.sh evening`: sync + preview de demà |
 | Setmanal | `30 20 * * 0` | `coach-job.sh weekly`: sync + revisió setmanal |
-| Decisions | `3-58/5 6-23 * * *` | `coach-job.sh decisions`: aplica / descarta / desfà les propostes segons el que l'atleta ha tocat a l'app (`coach_decision`). Inert mentre `coach_apply_mode` sigui `dry_run` |
+| Decisions i peticions | `3-58/5 6-23 * * *` | `coach-job.sh decisions`: aplica / descarta / desfà les propostes segons el que l'atleta ha tocat a l'app (`coach_decision`), i processa les peticions (`athlete_request`: ara `regenerate_macro`, màxim un macro al dia, ~1 € amb Opus). Inert mentre `coach_apply_mode` sigui `dry_run` |
 | Còpia BD | `50 4 * * *` | `backup-db.sh`: pg_dump comprimit, 14 dies |
 | Desplegament (crontab de root) | `50 5 * * *` | `git pull --ff-only` de `main` + `pip install` + `npm install` a `app/` + reinici del servei `expo-dev` |
 
@@ -90,6 +90,12 @@ capes més:
 
 Restauració real en una BD buida: pendent de fer (no hi ha Postgres local);
 vegeu `docs/security-review-2026-09.md`.
+
+## Models del coach
+
+`.env`: `COACH_MODEL` (diari i setmanal; per defecte `claude-sonnet-5`) i
+`COACH_MODEL_MACRO` (macro; per defecte `claude-opus-5`). Costos reals:
+diari ~0,11 €, setmanal ~0,18 €, macro ~1 €.
 
 ## Seguretat del servidor (hardening 13/09/2026)
 

@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import GoalForm from '@/components/goal-form';
 import { ThemedText } from '@/components/themed-text';
-import { Goal, LogisticsTask, getGoals, getLogistics, getSetting, setLogisticsDone, setSetting } from '@/lib/api';
+import { AthleteRequest, Goal, LogisticsTask, PlanBlockFull, getBlocks, getGoals, getLogistics, getRequests, getSetting, localDateISO, sendRequest, setLogisticsDone, setSetting } from '@/lib/api';
 import { daysUntil, formatClock, sportLabel } from '@/lib/format';
 
 const SCENARIOS = ['Prudent', 'Objectiu', 'Gran dia'];
@@ -23,12 +23,24 @@ function shortDate(iso: string | null): string {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
 }
+function ddmm(iso: string): string {
+  const [, m, d] = iso.split('-');
+  return `${d}/${m}`;
+}
+
+const PHASE_LABEL: Record<string, string> = {
+  base: 'base', build: 'construcció', peak: 'pic', taper: 'afinament', race: 'cursa',
+  recovery: 'recuperació', transition: 'transició',
+};
 
 export default function Objectius() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [logistics, setLogistics] = useState<LogisticsTask[]>([]);
   const [editing, setEditing] = useState<Goal | 'new' | null>(null);
   const [applyMode, setApplyMode] = useState<string | null>(null);
+  const [blocks, setBlocks] = useState<PlanBlockFull[]>([]);
+  const [requests, setRequests] = useState<AthleteRequest[]>([]);
+  const [requested, setRequested] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const insets = useSafeAreaInsets();
@@ -50,6 +62,9 @@ export default function Objectius() {
       setGoals(gs);
       setLogistics(gs.length > 0 ? await getLogistics(gs[0].id) : []);
       setApplyMode((await getSetting('coach_apply_mode')) ?? 'dry_run');
+      const [bs, rs] = await Promise.all([getBlocks(), getRequests(3)]);
+      setBlocks(bs);
+      setRequests(rs);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -109,6 +124,64 @@ export default function Objectius() {
     );
   };
 
+  const askMacro = () => {
+    Alert.alert(
+      'Demanar un macro nou?',
+      'El coach proposarà la seqüència de blocs fins a l’objectiu i la recuperació. Res s’aplica fins que ho aprovis a Avui. Un al dia.',
+      [
+        { text: 'Cancel·la', style: 'cancel' },
+        {
+          text: 'Demana',
+          style: 'default',
+          onPress: async () => {
+            try {
+              await sendRequest('regenerate_macro', { goal_id: goal?.id ?? null });
+              setRequested(true);
+            } catch (e) {
+              setError(e instanceof Error ? e.message : String(e));
+            }
+          },
+        },
+      ]
+    );
+  };
+  const lastRequest = requests[0];
+  const today = localDateISO();
+  const planSection = (
+    <>
+      <ThemedText style={styles.sectionTitle}>Pla</ThemedText>
+      <View style={styles.card}>
+        {blocks.length === 0 && <ThemedText style={styles.emptyOthers}>Cap bloc. Demana un macro al coach.</ThemedText>}
+        {blocks.map((b) => {
+          const current = b.start_date <= today && today <= b.end_date;
+          return (
+            <View key={b.id} style={[styles.blockRow, current && styles.blockCurrent]}>
+              <ThemedText style={styles.phaseChip}>{PHASE_LABEL[b.phase] ?? b.phase}</ThemedText>
+              <View style={styles.goalBody}>
+                <ThemedText style={styles.goalName}>{b.name ?? b.phase}</ThemedText>
+                <ThemedText style={styles.goalMeta}>
+                  {ddmm(b.start_date)} – {ddmm(b.end_date)}
+                  {b.target_weekly_hours != null && ` · ${b.target_weekly_hours} h/set`}
+                  {b.status === 'proposed' && ' · proposat'}
+                </ThemedText>
+              </View>
+            </View>
+          );
+        })}
+        {requested || lastRequest?.status === 'pending' || lastRequest?.status === 'processing' ? (
+          <ThemedText style={styles.working}>El coach hi treballa: la proposta surt a Avui en menys de 5 minuts.</ThemedText>
+        ) : (
+          <TouchableOpacity style={styles.newButton} onPress={askMacro}>
+            <ThemedText style={styles.newButtonText}>Demana un macro nou</ThemedText>
+          </TouchableOpacity>
+        )}
+        {!requested && lastRequest?.status === 'failed' && lastRequest.error && (
+          <ThemedText style={styles.error}>{lastRequest.error}</ThemedText>
+        )}
+      </View>
+    </>
+  );
+
   const coachSettings = (
     <>
       <ThemedText style={styles.sectionTitle}>Coach</ThemedText>
@@ -136,6 +209,7 @@ export default function Objectius() {
       <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
         <ThemedText>{error ?? 'Cap objectiu actiu.'}</ThemedText>
         {newButton}
+        {planSection}
         {coachSettings}
       </ScrollView>
     );
@@ -249,6 +323,8 @@ export default function Objectius() {
         </>
       )}
 
+      {planSection}
+
       <ThemedText style={styles.sectionTitle}>Altres objectius</ThemedText>
       <View style={styles.card}>
         {others.length === 0 && <ThemedText style={styles.emptyOthers}>Cap més. El coach només mira aquest.</ThemedText>}
@@ -313,6 +389,10 @@ const styles = StyleSheet.create({
   goalMeta: { fontSize: 13, opacity: 0.7 },
   newButton: { alignSelf: 'flex-start', marginTop: 4, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#1D3D47' },
   newButtonText: { color: '#fff', fontWeight: '700' },
+  blockRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4, borderRadius: 8, paddingHorizontal: 4 },
+  blockCurrent: { backgroundColor: 'rgba(46,158,91,0.12)' },
+  phaseChip: { fontSize: 11, fontWeight: '700', paddingVertical: 3, paddingHorizontal: 8, borderRadius: 10, backgroundColor: 'rgba(127,127,127,0.15)', overflow: 'hidden' },
+  working: { fontSize: 13, fontStyle: 'italic', opacity: 0.8, marginTop: 4 },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   switchLabel: { flex: 1, fontSize: 14, fontWeight: '600' },
   switchHelp: { fontSize: 12, opacity: 0.7 },

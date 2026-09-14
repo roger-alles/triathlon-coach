@@ -133,3 +133,16 @@ def test_output_schema_v12_allows_add_without_plan_session_id():
     assert ns["local_date"]["type"] == "string"
     assert set(ns["parent_of_day"]["enum"]) == {"swim", "bike", "run"}
     assert "macro" in OUTPUT_SCHEMA["properties"]["report_type"]["enum"]
+
+
+def test_output_schema_v13_has_block_changes_for_the_macro():
+    # S3: el macro proposa blocs (fase, dates, hores), mai sessions.
+    from coach.llm import MAX_TOKENS, OUTPUT_SCHEMA
+    assert "block_changes" not in OUTPUT_SCHEMA["required"]
+    bc = OUTPUT_SCHEMA["properties"]["block_changes"]["items"]
+    assert set(bc["properties"]["action"]["enum"]) == {"add", "modify", "cancel"}
+    assert set(bc["required"]) == {"action", "reason"}
+    nb = bc["properties"]["new_block"]["properties"]
+    assert {"phase", "name", "start_date", "end_date", "intent", "target_weekly_hours", "fallback"} <= set(nb)
+    assert set(nb["phase"]["enum"]) == {"base", "build", "peak", "taper", "race", "recovery", "transition"}
+    assert MAX_TOKENS["macro"] == 64000

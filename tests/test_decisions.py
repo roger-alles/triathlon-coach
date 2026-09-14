@@ -53,9 +53,13 @@ class Conn:
             rows = [r] if r else []
         elif "from activity where plan_session_id" in s:
             rows = [(1,)] if params[0] in self.linked else []
-        elif s.startswith("insert into plan_session"):
+        elif s.startswith("insert into plan_session") or s.startswith("insert into plan_block"):
             self.next_id += 1
             rows = [(self.next_id,)]
+        elif "update athlete_request set status='processing'" in s:
+            rows = [(params[0],)] if getattr(self, "request_claimable", True) else []
+        elif "from coach_report where report_type='macro'" in s:
+            rows = [(getattr(self, "macro_today", 0),)]
         conn = self
         class R:
             def fetchone(self_inner):
@@ -180,3 +184,49 @@ def test_undo_of_an_added_session_cancels_it_instead_of_pointing_back():
     assert cancel and cancel[0][1] == (300,)
     assert not conn.sql("set superseded_by=")
     assert conn.sql("set proposal_status='undone'")[0][1] == (7,)
+
+
+# ─── S3: blocs i peticions ───────────────────────────────────────────
+
+def test_apply_a_macro_proposal_writes_the_blocks_in_the_same_transaction():
+    from coach.models import Athlete, Block, Goal, History
+    race = date(2026, 9, 27)
+    goal = Goal(name="Fornells", discipline="triathlon", event_date=race, priority="A", id=2,
+                profile={"target_times_sec": {"total": [8110, 7470, 6895]}})
+    taper = Block(id=8, phase="taper", start_date=date(2026, 9, 21), end_date=race, target_weekly_hours=3.5, goal_id=2)
+    output = json.dumps({"session_changes": [], "block_changes": [
+        {"action": "add", "reason": "x", "new_block": {"phase": "recovery", "name": "Rec",
+         "start_date": "2026-09-28", "end_date": "2026-10-18", "target_weekly_hours": 3.0}}]})
+    conn = Conn(decision=(1, 7, "apply"), report=("proposed", output))
+    conn.blocks = {}
+    loader = lambda c: ([], [goal], History(), Athlete(name="R", max_hr=211), [taper])
+    assert process_decision(conn, (1, 7, "apply"), plan_loader=loader) == "done"
+    ins = conn.sql("insert into plan_block")
+    assert len(ins) == 1 and ins[0][1][0] == 2          # goal_id de l'A més proper
+    assert conn.sql("insert into coach_report_effect")[0][1][1] == "block_created"
+    assert conn.sql("set proposal_status='applied'")[0][1] == (7,)
+
+
+def test_undo_reverts_block_effects_too():
+    conn = Conn(decision=(1, 7, "undo"), report=("applied", "{}"),
+                effects=[(7, "block_created", None, None, None, None, 101, None)])
+    assert process_decision(conn, (1, 7, "undo"), plan_loader=None) == "done"
+    assert conn.sql("update plan_block set status='cancelled'")[0][1] == (101,)
+
+
+def test_regenerate_macro_request_runs_the_macro_once_a_day():
+    from coach.decisions import process_request
+    runs = []
+    conn = Conn(decision=(0, 0, ""))
+    conn.macro_today = 0
+    conn.request_claimable = True
+    outcome = process_request(conn, (5, "regenerate_macro", {}), run_macro=lambda: runs.append(1) or 99)
+    assert outcome == "answered" and runs == [1]
+    assert conn.sql("set status='answered', report_id=%s")[0][1] == (99, 5)
+    # segona petició el mateix dia: no es gasta un altre macro
+    conn2 = Conn(decision=(0, 0, ""))
+    conn2.macro_today = 1
+    conn2.request_claimable = True
+    outcome = process_request(conn2, (6, "regenerate_macro", {}), run_macro=lambda: runs.append(2))
+    assert outcome == "failed" and runs == [1]
+    assert "avui" in conn2.sql("set status='failed'")[0][1][0]
