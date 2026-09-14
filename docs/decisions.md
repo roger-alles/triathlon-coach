@@ -2,6 +2,25 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-14 — S4a: el coach pot crear sessions; el validador jutja contra la realitat
+
+Preparació del pla rodant (S3 macro, S4b setmana). Decisions: (1) acció
+`add` al contracte (v1.2): `plan_session_id` passa a opcional (l'API admet
+propietats opcionals), `new_session.local_date` i `parent_of_day` (el brick
+penja de la sessió d'aquell esport del mateix dia, creada al mateix informe
+o ja viva). Un `add` fora de tot bloc és error semàntic: "cal macro"; a la
+BD, `apply_to_db` fa dues passades com el seed (crear, després encadenar) i
+un `add` es desfà cancel·lant la fila nova. `classify` mai el fa automàtic.
+(2) `plan_from_db` retorna també els blocs (per situar sessions en blocs
+encara buits) i l'historial real de les 8 setmanes fins al dilluns d'avui
+(hores i llarga per esport), no només les anteriors al pla. (3) R1 i R6
+compten les setmanes passades amb les hores REALS si n'hi ha registre; el
+passat no es jutja, és la base. (4) R8 només bloqueja quan el taper és
+escrit sencer (sessions fins a la vigília); si és parcial, avisa. (5) El
+setmanal parla del dilluns vinent: bloc i finestra `[dilluns, diumenge]`,
+pla vist dues setmanes. Verificat que el pla real de Fornells dona el mateix
+veredicte amb el codi nou que amb el vell.
+
 ## 2026-09-14 — S1b: propostes del coach a l'app; adeu al dry-run fins al 28
 
 Roger (14/09): "no podem treure el dry_run i fer-ho tot bé directament?". Sí,

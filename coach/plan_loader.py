@@ -48,13 +48,26 @@ def plan_from_yaml(path: Path) -> tuple[list[Session], Goal]:
     return plan, goal
 
 
-def plan_from_db(conn) -> tuple[list[Session], list[Goal], History, Athlete]:
-    """El pla viu de la DB + context (historial real, atleta) per validar-lo.
+HISTORY_WEEKS = 8
+
+
+def _monday(d: date) -> date:
+    return d - timedelta(days=d.weekday())
+
+
+def plan_from_db(conn, today: date | None = None
+                 ) -> tuple[list[Session], list[Goal], History, Athlete, list[Block]]:
+    """El pla viu de la DB + context (historial real, atleta, blocs) per validar-lo.
 
     Tots els objectius actius, per prioritat i data. Pot ser una llista buida
     (després d'una cursa, abans del següent objectiu): el coach ha de seguir
-    funcionant sobre el bloc de recuperació.
+    funcionant sobre el bloc de recuperació. L'historial real cobreix les
+    HISTORY_WEEKS setmanes senceres anteriors al dilluns d'avui: el validador
+    compara el pla amb el que s'ha FET, no amb el que estava escrit.
+    Els blocs es retornen tots (també els que encara no tenen cap sessió) per
+    situar-hi sessions noves (add).
     """
+    today = today or date.today()
     goals = [Goal(name=g[0], discipline=g[1], event_date=g[2], priority=g[3],
                   profile=g[4] or {})
              for g in conn.execute("""select name, discipline, event_date, priority, profile
@@ -63,10 +76,10 @@ def plan_from_db(conn) -> tuple[list[Session], list[Goal], History, Athlete]:
 
     blocks = {r[0]: Block(id=r[0], phase=r[1], start_date=r[2], end_date=r[3],
                           target_weekly_hours=float(r[4]) if r[4] else None,
-                          return_from_layoff=r[5])
+                          return_from_layoff=r[5], goal_id=r[6])
               for r in conn.execute("""select id, phase, start_date, end_date,
-                                       target_weekly_hours, return_from_layoff
-                                       from plan_block""")}
+                                       target_weekly_hours, return_from_layoff, goal_id
+                                       from plan_block order by start_date""")}
     plan = [Session(local_date=r[0], sport=r[1], session_type=r[2], title=r[3],
                     structure=r[4], block=blocks.get(r[5]),
                     duration_sec_target=r[6], priority=r[7], status=r[8],
@@ -78,23 +91,33 @@ def plan_from_db(conn) -> tuple[list[Session], list[Goal], History, Athlete]:
                                      is_goal_event, chained_after, id
                                      from plan_session where superseded_by is null""")]
 
-    plan_start = min((s.local_date for s in plan), default=date.today())
+    plan_start = min((s.local_date for s in plan), default=today)
+    this_monday = _monday(today)
+    since = this_monday - timedelta(weeks=HISTORY_WEEKS)
     weekly = {}
     for r in conn.execute("""
             select date_trunc('week', local_date)::date, sum(duration_sec)/3600.0
             from activity where local_date < %s and local_date >= %s
-            group by 1""", (plan_start, plan_start - timedelta(weeks=5))):
+            group by 1""", (this_monday, since)):
         weekly[r[0]] = float(r[1])
+    long_by_week: dict[date, dict[str, float]] = {}
+    for r in conn.execute("""
+            select date_trunc('week', local_date)::date, sport, max(duration_sec)
+            from activity where local_date < %s and local_date >= %s
+              and sport in ('swim', 'bike', 'run')
+            group by 1, 2""", (this_monday, since)):
+        long_by_week.setdefault(r[0], {})[r[1]] = float(r[2])
     metrics = [DailyMetric(r[0], r[1], r[2])
                for r in conn.execute("""select local_date, hrv_status, training_readiness
                                         from daily_metric where local_date >= %s""",
-                                     (plan_start,))]
+                                     (min(plan_start, since),))]
     a = conn.execute("""select name, max_hr, ftp_watts, css_sec_per_100m,
                         threshold_pace_sec_km from athlete where id=1""").fetchone()
     athlete = Athlete(name=a[0], max_hr=a[1], ftp_watts=a[2],
                       css_sec_per_100m=float(a[3]) if a[3] else None,
                       threshold_pace_sec_km=float(a[4]) if a[4] else None)
-    return plan, goals, History(weekly_hours=weekly, daily_metrics=metrics), athlete
+    history = History(weekly_hours=weekly, daily_metrics=metrics, long_by_week=long_by_week)
+    return plan, goals, history, athlete, list(blocks.values())
 
 
 def main() -> None:
@@ -106,13 +129,14 @@ def main() -> None:
     if not url:
         sys.exit("Falta DATABASE_URL al .env.")
     with psycopg.connect(url) as conn:
-        plan, goals, history, athlete = plan_from_db(conn)
+        plan, goals, history, athlete, blocks = plan_from_db(conn)
 
     if not plan:
         print("cap sessió viva al pla: res a validar")
         return
-    reference = min(s.local_date for s in plan)
-    violations = validate_plan(plan, athlete, history, goals, reference_date=reference)
+    reference = date.today()
+    violations = validate_plan(plan, athlete, history, goals, reference_date=reference,
+                               plan_start=min(s.local_date for s in plan))
     names = ", ".join(g.name for g in goals) or "sense objectiu actiu"
     print(f"pla '{names}': {len(plan)} sessions validades (referència {reference})")
     if not violations:

@@ -462,3 +462,63 @@ def test_un_objectiu_C_sense_data_no_trenca_cap_regla():
     without = run(plan, history_flat(monday - timedelta(days=28)), goals=[fornells])
     # el C sense data no afegeix ni treu cap violació
     assert rules_of(with_c) == rules_of(without)
+
+
+# --- S4a: el validador jutja contra la realitat ----------------------------
+
+def test_r1_setmanes_passades_compten_amb_hores_reals_no_planificades():
+    from coach.rules import r1_weekly_ramp, build_weeks
+    m0 = date(2026, 9, 7)
+    m1, m2 = m0 + timedelta(days=7), m0 + timedelta(days=14)
+    block = mk_block(m0, weeks=3)
+    # setmana passada planificada a 7 h, setmana en curs 7 h, setmana vinent 7,8 h
+    plan = steady_week(m0, 7.0, block) + steady_week(m1, 7.0, block) + steady_week(m2, 7.8, block)
+    weeks = build_weeks(plan)
+    flat = History(weekly_hours={m0 - timedelta(weeks=i): 7.0 for i in range(1, 4)})
+    # sense realitat: +11% sobre 7 h → només avís tou
+    assert all(v.severity == "warning" for v in r1_weekly_ramp(weeks, flat, reference_date=m1))
+    # amb la setmana passada feta a 4 h de veritat, la base cau i 7,8 h és una rampa dura
+    real = History(weekly_hours={**flat.weekly_hours, m0: 4.0})
+    out = r1_weekly_ramp(weeks, real, reference_date=m1)
+    assert any(v.severity == "blocking" and "2026-09-21" in v.message for v in out)
+
+
+def test_r6_la_llarga_de_referencia_es_la_real_si_existeix():
+    from coach.rules import r6_long_session_growth, build_weeks
+    m0 = date(2026, 9, 7)
+    m1 = m0 + timedelta(days=7)
+    block = mk_block(m0, weeks=2)
+    import dataclasses
+    long = lambda d, h: dataclasses.replace(easy_session(d, "bike", h, block=block), session_type="long")
+    plan = [rest_session(m0, block), long(m0 + timedelta(days=5), 2.0),
+            rest_session(m1, block), long(m1 + timedelta(days=5), 2.1)]
+    weeks = build_weeks(plan)
+    # planificat 2 h → 2,1 h: +5%, cap avís
+    assert r6_long_session_growth(weeks, History(), reference_date=m1) == []
+    # però la llarga real de la setmana passada va ser d'1,5 h: 2,1 h és +40%
+    real = History(long_by_week={m0: {"bike": 1.5 * 3600}})
+    out = r6_long_session_growth(weeks, real, reference_date=m1)
+    assert out and out[0].rule == "R6" and "90min" in out[0].message
+
+
+def test_r8_pla_parcial_avisa_en_lloc_de_bloquejar():
+    # Pla rodant: el setmanal només escriu la setmana vinent. Si la cursa cau
+    # dins del pla però el taper no hi és sencer, el volum no es pot jutjar:
+    # avís, no bloqueig. Amb el taper sencer, el bloqueig es manté.
+    race_day = date(2026, 10, 25)   # diumenge
+    goal = Goal(name="Cursa", discipline="run", event_date=race_day, priority="A",
+                profile={"target_times_sec": {"total": [3600, 3300, 3000]}})
+    build = mk_block(date(2026, 10, 5), weeks=2)
+    taper = Block(id=2, phase="taper", start_date=date(2026, 10, 19), end_date=race_day)
+    plan = steady_week(date(2026, 10, 5), 7.0, build) + steady_week(date(2026, 10, 12), 7.0, build)
+    # taper sencer, massa volum (7 h = 100% de les prèvies) → bloqueig
+    full_taper = steady_week(date(2026, 10, 19), 7.0, taper)
+    race = easy_session(race_day, "run", 1.0, priority="key", block=taper, is_goal_event=True)
+    out = run(plan + full_taper + [race], history_flat(date(2026, 9, 7)), goals=[goal])
+    assert any(v.rule == "R8" and v.blocking and "volum" in v.message for v in out)
+    # pla parcial: només fins dimecres del taper (el setmanal encara no ha escrit la resta)
+    partial = [s for s in full_taper if s.local_date <= date(2026, 10, 21)]
+    out = run(plan + partial + [race], history_flat(date(2026, 9, 7)), goals=[goal])
+    r8 = [v for v in out if v.rule == "R8"]
+    assert r8 and all(not v.blocking for v in r8)
+    assert any("parcial" in v.message for v in r8)

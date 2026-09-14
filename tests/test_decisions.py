@@ -109,7 +109,7 @@ def test_apply_revalidates_against_the_live_plan_and_applies_with_the_decision_i
     changes = [{"plan_session_id": 3, "action": "cancel", "reason": "pluja"}]
     conn = Conn(decision=(1, 7, "apply"), report=proposal(changes),
                 sessions={3: ("planned", None)})
-    loader = lambda c: (live, [], History(), Athlete(name="R", max_hr=211))
+    loader = lambda c: (live, [], History(), Athlete(name="R", max_hr=211), [b])
     assert process_decision(conn, (1, 7, "apply"), plan_loader=loader) == "done"
     assert conn.sql("set status='cancelled'")[0][1] == (3,)
     effect = conn.sql("insert into coach_report_effect")[0][1]
@@ -123,7 +123,7 @@ def test_apply_fails_cleanly_when_the_proposal_went_stale():
     conn = Conn(decision=(1, 7, "apply"), report=proposal(changes),
                 sessions={3: ("planned", None)})
     # el pla viu ja no té la sessió 3: semantic_errors la rebutja
-    loader = lambda c: ([], [], History(), Athlete(name="R", max_hr=211))
+    loader = lambda c: ([], [], History(), Athlete(name="R", max_hr=211), [])
     assert process_decision(conn, (1, 7, "apply"), plan_loader=loader) == "failed"
     assert not conn.sql("set status='cancelled'")
     assert not conn.sql("set proposal_status='applied'")   # segueix proposed
@@ -167,3 +167,16 @@ def test_undo_refuses_when_something_already_happened_on_a_created_row():
 def test_undo_only_applies_to_applied_reports():
     conn = Conn(decision=(2, 7, "undo"), report=("proposed", "{}"))
     assert process_decision(conn, (2, 7, "undo"), plan_loader=None) == "failed"
+
+
+def test_undo_of_an_added_session_cancels_it_instead_of_pointing_back():
+    # S4a: un add no té fila vella a què apuntar (session_id == new_session_id):
+    # desfer-lo és cancel·lar la fila nova. La resta d'efectes no canvien.
+    conn = Conn(decision=(1, 7, "undo"), report=("applied", "{}"),
+                effects=[(7, "created", 300, 300, None, None)],
+                sessions={300: ("planned", None)})
+    assert process_decision(conn, (1, 7, "undo"), plan_loader=None) == "done"
+    cancel = conn.sql("set status='cancelled'")
+    assert cancel and cancel[0][1] == (300,)
+    assert not conn.sql("set superseded_by=")
+    assert conn.sql("set proposal_status='undone'")[0][1] == (7,)

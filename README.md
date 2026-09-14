@@ -63,5 +63,6 @@ make report      # últim informe del coach
   sessió; el vinculador respecta la sessió que l'atleta ha triat.
 - Objectius des de l'app: llista A/B/C, alta, edició i abandonament; l'A més
   proper governa el pla.
-- Pendent: validador per a pla rodant (S4a), macro i setmana rodant (S3-S4),
-  multiusuari i TestFlight.
+- Validador preparat per al pla rodant: el coach pot crear sessions dins
+  d'un bloc, i les regles jutgen contra les hores reals de les últimes setmanes.
+- Pendent: macro i setmana rodant (S3-S4b), multiusuari i TestFlight.

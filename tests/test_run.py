@@ -166,7 +166,7 @@ def test_main_holds_no_db_connection_while_the_model_thinks(monkeypatch):
     monkeypatch.setattr(run.psycopg, "connect", fake_connect)
     monkeypatch.setattr(run, "build_context",
                         lambda conn, today, report_for=None: {"today": str(today)})
-    monkeypatch.setattr(run, "plan_from_db", lambda conn: ([], [], None, None))
+    monkeypatch.setattr(run, "plan_from_db", lambda conn, today=None: ([], [], None, None, []))
     monkeypatch.setattr(run, "coach_cycle", fake_cycle)
     monkeypatch.setattr(run, "CoachLLM", lambda: None)
     monkeypatch.setattr(run, "load_prompt", lambda name: "prompt")
@@ -231,6 +231,10 @@ class DbConn:
         elif s.startswith("insert into plan_session"):
             self.next_id += 1
             row = (self.next_id,)
+        elif s.startswith("select id, goal_id from plan_block"):
+            row = getattr(self, "blocks", {}).get(params[0])
+        elif s.startswith("select id from plan_session where local_date"):
+            row = None   # cap sessió viva amb aquell (dia, esport): només les del mateix informe
         elif s.startswith("insert into coach_report ("):
             row = (7,)
         class R:
@@ -333,3 +337,141 @@ def test_write_report_summary_prefix_follows_the_state():
     assert summary("proposed").startswith("*(proposta")
     assert summary("auto_applied").startswith("*(aplicat")
     assert summary("failed").startswith("*(no aplicat")
+
+
+# ─── S4a: add (sessions noves dins d'un bloc) ────────────────────────
+
+def _block():
+    return Block(id=1, phase="build", start_date=MON, end_date=MON + timedelta(days=6),
+                 target_weekly_hours=4, goal_id=2)
+
+
+def add_change(day_offset=2, sport="bike", title="Bici nova", minutes=60, parent=None, **extra):
+    sec = minutes * 60
+    ns = {"local_date": (MON + timedelta(days=day_offset)).isoformat(), "sport": sport,
+          "session_type": "easy", "title": title, "duration_sec_target": sec,
+          "structure_json": json.dumps({"steps": [{"phase": "main", "duration_sec": sec,
+                                                   "target": {"type": "rpe", "value": 3}}]})}
+    if parent:
+        ns["parent_of_day"] = parent
+    ns.update(extra)
+    return {"action": "add", "reason": "cal volum", "new_session": ns}
+
+
+def test_semantic_add_requires_date_block_and_parent_that_exists():
+    plan_by_id = {s.id: s for s in make_plan()}
+    blocks = [_block()]
+    ok = add_change()
+    assert semantic_errors([ok], plan_by_id, ATHLETE, blocks=blocks) == []
+    # sense local_date
+    bad = add_change(); del bad["new_session"]["local_date"]
+    assert any("local_date" in e for e in semantic_errors([bad], plan_by_id, ATHLETE, blocks=blocks))
+    # fora de tot bloc: cal macro
+    outside = add_change(day_offset=20)
+    assert any("bloc" in e for e in semantic_errors([outside], plan_by_id, ATHLETE, blocks=blocks))
+    # brick que penja d'una bici que no existeix aquell dia (dia 2 no té bici al pla)
+    orphan = add_change(day_offset=2, sport="run", title="brick", minutes=10, parent="bike")
+    assert any("parent_of_day" in e for e in semantic_errors([orphan], plan_by_id, ATHLETE, blocks=blocks))
+    # però sí si la bici s'afegeix al mateix informe
+    assert semantic_errors([ok, orphan], plan_by_id, ATHLETE, blocks=blocks) == []
+    # o si ja és al pla (dia 5 té la bici 4)
+    brick5 = add_change(day_offset=5, sport="run", title="brick", minutes=10, parent="bike")
+    assert semantic_errors([brick5], plan_by_id, ATHLETE, blocks=blocks) == []
+
+
+def test_semantic_non_add_actions_still_need_plan_session_id():
+    plan_by_id = {s.id: s for s in make_plan()}
+    errs = semantic_errors([{"action": "cancel", "reason": "x"}], plan_by_id, ATHLETE)
+    assert errs and "plan_session_id" in errs[0]
+
+
+def test_apply_changes_add_builds_a_session_in_its_block_and_chains_the_brick():
+    plan = make_plan()
+    blocks = [_block()]
+    changes = [add_change(), add_change(day_offset=2, sport="run", title="brick", minutes=10, parent="bike")]
+    semantic_errors(changes, {s.id: s for s in plan}, ATHLETE, blocks=blocks)  # parseja structure
+    candidate = apply_changes(plan, changes, blocks=blocks)
+    new = [s for s in candidate if s.id is not None and s.id < 0]
+    assert len(new) == 2 and {s.title for s in new} == {"Bici nova", "brick"}
+    bici = next(s for s in new if s.sport == "bike")
+    brick = next(s for s in new if s.sport == "run")
+    assert bici.block is blocks[0] and bici.local_date == MON + timedelta(days=2)
+    assert bici.priority == "support" and bici.status == "planned"
+    assert brick.chained is True and bici.chained is False
+    assert len(candidate) == len(plan) + 2   # l'original no es toca
+
+
+def test_apply_to_db_add_inserts_in_two_passes_and_links_the_brick_to_its_parent():
+    conn = DbConn({})
+    conn.blocks = {(MON + timedelta(days=2)): (1, 2)}   # dia -> (block_id, goal_id)
+    changes = [add_change(), add_change(day_offset=2, sport="run", title="brick", minutes=10, parent="bike")]
+    for c in changes:
+        c["new_session"]["structure"] = json.loads(c["new_session"]["structure_json"])
+    effects = apply_to_db(conn, 7, changes)
+    inserts = conn.sql("insert into plan_session")
+    assert len(inserts) == 2
+    # la fila nova neix amb bloc i objectiu del bloc, versió 1, creada pel coach
+    assert "block_id" in inserts[0][0] and "'coach'" in inserts[0][0]
+    # segona passada: el brick (id 102) penja de la bici (id 101) creada al mateix informe
+    chain = conn.sql("set chained_after=")
+    assert chain and chain[0][1] == (101, 102)
+    kinds = [(e["kind"], e["session_id"], e["new_session_id"]) for e in effects]
+    assert kinds == [("created", 101, 101), ("created", 102, 102)]
+
+
+def test_apply_to_db_add_without_block_is_stale():
+    conn = DbConn({})
+    conn.blocks = {}
+    c = add_change(); c["new_session"]["structure"] = {"steps": []}
+    with pytest.raises(StaleProposal):
+        apply_to_db(conn, 7, [c])
+
+
+def test_write_report_weekly_window_is_next_monday_to_sunday():
+    conn = DbConn({})
+    result = {"output": {"summary": "s", "rationale": "r", "session_changes": []},
+              "accepted": True, "usage": {"model": "m", "input_tokens": 1, "output_tokens": 1},
+              "validation_errors": [], "warnings": []}
+    sunday = date(2026, 9, 20)
+    write_report(conn, "weekly", {}, result, sunday, proposal_status="none")
+    params = conn.sql("insert into coach_report (")[0][1]
+    assert params[1] == date(2026, 9, 21) and params[2] == date(2026, 9, 27)
+    # el diari no canvia: avui + 3
+    write_report(conn, "daily", {}, result, sunday, proposal_status="none")
+    params = conn.sql("insert into coach_report (")[1][1]
+    assert params[1] == sunday and params[2] == sunday + timedelta(days=3)
+
+
+# ─── violacions preexistents: el coach no pot empitjorar, però no se'l castiga ──
+
+def test_preexisting_blocking_violation_becomes_a_warning_not_a_rejection():
+    # 14/09: amb hores reals, la setmana en curs ja viola R1 (+37%) abans que el
+    # coach digui res. Un informe que ho manté tot (keep) s'ha d'acceptar amb
+    # l'R1 com a avís; un que empitjora la setmana sí que es bloqueja.
+    plan = make_plan()   # 3,7 h aquesta setmana
+    # per sobre del sòl de volum de R1: dupliquem cada sessió d'entrenament
+    for s in plan:
+        if s.sport != "rest":
+            s.duration_sec_target *= 2
+            s.structure["steps"][0]["duration_sec"] *= 2
+    real = History(weekly_hours={MON - timedelta(weeks=i): 3.0 for i in range(1, 5)})
+    keep_all = {"session_changes": [{"plan_session_id": s.id, "action": "keep", "reason": ""} for s in plan],
+                "readiness": {"verdict": "green", "drivers": []}, "summary": "s", "rationale": "r",
+                "flags": [], "questions_for_athlete": []}
+    result = coach_cycle(llm=FakeLLM([keep_all]), system="", context_json="{}", plan=plan,
+                         athlete=ATHLETE, history=real, goals=[], today=MON, report_type="daily")
+    assert result["accepted"] is True
+    assert any(w.startswith("R1") for w in result["warnings"])
+
+    # allargar la bici del dissabte de 3 h a 5 h empitjora la rampa: bloqueig nou
+    sec = 5 * 3600
+    worse = dict(keep_all, session_changes=[
+        {"plan_session_id": 4, "action": "modify", "reason": "més volum",
+         "new_session": {"sport": "bike", "session_type": "long", "title": "Llarga",
+                         "duration_sec_target": sec,
+                         "structure_json": json.dumps({"steps": [{"phase": "main", "duration_sec": sec,
+                                                                  "target": {"type": "rpe", "value": 3}}]})}}])
+    result = coach_cycle(llm=FakeLLM([worse] * MAX_ATTEMPTS), system="", context_json="{}", plan=plan,
+                         athlete=ATHLETE, history=real, goals=[], today=MON, report_type="daily")
+    assert result["accepted"] is False
+    assert any("R1" in e for e in result["validation_errors"][0])

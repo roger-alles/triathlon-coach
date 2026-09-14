@@ -118,3 +118,18 @@ def test_output_schema_has_no_meta_keys():
 def test_load_prompt_reads_versioned_file():
     text = load_prompt("daily-v1")
     assert "entrenador" in text and "rationale" in text
+
+
+def test_output_schema_v12_allows_add_without_plan_session_id():
+    # S4a: el coach pot crear sessions (add) dins d'un bloc existent. Un add
+    # no té sessió d'origen, així que plan_session_id és opcional al schema
+    # (el codi l'exigeix per a la resta d'accions) i new_session porta la data.
+    from coach.llm import OUTPUT_SCHEMA
+    item = OUTPUT_SCHEMA["properties"]["session_changes"]["items"]
+    assert "add" in item["properties"]["action"]["enum"]
+    assert "plan_session_id" not in item["required"]
+    assert set(item["required"]) == {"action", "reason"}
+    ns = item["properties"]["new_session"]["properties"]
+    assert ns["local_date"]["type"] == "string"
+    assert set(ns["parent_of_day"]["enum"]) == {"swim", "bike", "run"}
+    assert "macro" in OUTPUT_SCHEMA["properties"]["report_type"]["enum"]

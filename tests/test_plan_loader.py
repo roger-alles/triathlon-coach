@@ -58,15 +58,27 @@ def test_fornells_loads_expected_shape():
 class _DbConn:
     """Respon per fragment de SQL; prou per a plan_from_db."""
 
-    def __init__(self, goals):
+    def __init__(self, goals, blocks=(), weekly=(), longs=()):
         self.goals = goals
+        self.blocks = list(blocks)      # id, phase, start, end, hours, layoff, goal_id
+        self.weekly = list(weekly)      # dilluns, hores
+        self.longs = list(longs)        # dilluns, esport, segons
+        self.last_params = None
 
     def execute(self, sql, params=None):
         s = " ".join(sql.split()).lower()
+        self.last_params = params
         if "from goal" in s:
             rows = self.goals
         elif "from athlete" in s:
             rows = [("Roger", 211, None, None, None)]
+        elif "from plan_block" in s:
+            rows = self.blocks
+        elif "sum(duration_sec)" in s:
+            self.weekly_params = params
+            rows = self.weekly
+        elif "max(duration_sec)" in s:
+            rows = self.longs
         else:
             rows = []
         class R:
@@ -83,7 +95,7 @@ def test_plan_from_db_returns_all_active_goals_as_a_list():
     from coach.plan_loader import plan_from_db
     conn = _DbConn([("Fornells", "triathlon", date(2026, 9, 27), "A", {}),
                     ("Transpirinenca", "ultra_endurance", date(2027, 7, 15), "A", None)])
-    plan, goals, history, athlete = plan_from_db(conn)
+    plan, goals, history, athlete, blocks = plan_from_db(conn)
     assert [g.name for g in goals] == ["Fornells", "Transpirinenca"]
     assert goals[1].profile == {}
     assert athlete.name == "Roger"
@@ -93,5 +105,27 @@ def test_plan_from_db_without_active_goal_does_not_exit():
     # Després de la cursa Fornells passa a completed: el coach ha de seguir
     # funcionant (bloc de recuperació) encara que no hi hagi cap objectiu actiu.
     from coach.plan_loader import plan_from_db
-    plan, goals, history, athlete = plan_from_db(_DbConn([]))
-    assert goals == [] and plan == []
+    plan, goals, history, athlete, blocks = plan_from_db(_DbConn([]))
+    assert goals == [] and plan == [] and blocks == []
+
+
+def test_plan_from_db_returns_blocks_with_goal_and_real_history_up_to_today():
+    # S4a: el validador jutja contra la realitat de les últimes setmanes fins
+    # a AVUI (no fins a l'inici del pla), i el coach necessita els blocs per
+    # situar sessions noves (add) en un bloc encara sense sessions.
+    from coach.plan_loader import plan_from_db
+    today = date(2026, 9, 14)   # dilluns
+    conn = _DbConn(
+        [("Fornells", "triathlon", date(2026, 9, 27), "A", {})],
+        blocks=[(6, "peak", date(2026, 9, 7), date(2026, 9, 20), 7.5, False, 2),
+                (7, "recovery", date(2026, 9, 28), date(2026, 10, 18), 4.0, False, 2)],
+        weekly=[(date(2026, 8, 31), 5.2), (date(2026, 9, 7), 6.1)],
+        longs=[(date(2026, 9, 7), "bike", 4432.0), (date(2026, 9, 7), "run", 827.0)],
+    )
+    plan, goals, history, athlete, blocks = plan_from_db(conn, today=today)
+    assert [b.id for b in blocks] == [6, 7]
+    assert blocks[1].goal_id == 2 and blocks[1].phase == "recovery"
+    assert history.weekly_hours == {date(2026, 8, 31): 5.2, date(2026, 9, 7): 6.1}
+    assert history.long_by_week == {date(2026, 9, 7): {"bike": 4432.0, "run": 827.0}}
+    # la finestra d'història acaba al dilluns d'avui i comença 8 setmanes abans
+    assert conn.weekly_params == (date(2026, 9, 14), date(2026, 7, 20))

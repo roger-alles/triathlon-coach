@@ -35,6 +35,11 @@ Regles de conducta:
   càrrega, dies de descans, separació entre sessions clau, taper, distribució
   d'intensitat...). Si creus que una regla t'impedeix fer el correcte,
   explica-ho a flags en lloc d'incomplir-la.
+- action=add per crear una sessió nova (sense plan_session_id): new_session
+  completa amb local_date dins d'un bloc existent; mai el mateix dia que una
+  altra sessió clau; per a un brick, parent_of_day = esport de la sessió del
+  mateix dia de què penja. Al diari, add és excepcional (un brick perdut, un
+  descans actiu): les setmanes noves les escriu el setmanal.
 - action=keep per a tota sessió que no canvies. No reescriguis sessions per
   gust: cada canvi ha de tenir un motiu a reason.
 - Per a modify/replace, new_session ha de portar sport, session_type, title,

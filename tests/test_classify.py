@@ -94,3 +94,19 @@ def test_any_blocking_violation_is_a_proposal():
 def test_to_dict_is_json_friendly():
     d = classify([modify(1, 30)], PLAN, MON, []).to_dict()
     assert d["auto"] is True and d["reasons"] == [] and isinstance(d["horizon_days"], int)
+
+
+def test_add_is_never_auto_and_does_not_crash():
+    # S4a: una sessió nova no té sessió d'origen (plan_session_id): la regla
+    # ha de comptar-la (càrrega, horitzó) i marcar-la sempre com a proposta.
+    sec = 45 * 60
+    add = {"action": "add", "reason": "volum", "new_session": {
+        "local_date": (MON + timedelta(days=1)).isoformat(), "sport": "run",
+        "session_type": "easy", "title": "Rodatge extra", "duration_sec_target": sec,
+        "structure": {"steps": [{"phase": "main", "duration_sec": sec,
+                                 "target": {"type": "rpe", "value": 3}}]}}}
+    c = classify([add], PLAN, MON, blocking=[], blocks=[B])
+    assert c.auto is False
+    assert any("afegeix" in r for r in c.reasons)
+    assert c.n_sessions == 1 and c.horizon_days == 1
+    assert c.load_before_sec == 0 and c.load_after_sec == sec
