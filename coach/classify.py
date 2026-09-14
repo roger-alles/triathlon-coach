@@ -38,27 +38,29 @@ class Classification:
         return asdict(self)
 
 
-def _after(session: Session, change: dict) -> Session | None:
-    """La sessió tal com quedaria (None si es cancel·la)."""
+def _after(session: Session | None, change: dict, blocks) -> Session | None:
+    """La sessió tal com quedaria (None si es cancel·la; nova si és un add)."""
     from coach.run import apply_changes  # import tardà: run importa classify
-    result = apply_changes([session], [change])
+    result = apply_changes([session] if session else [], [change], blocks)
     return result[0] if result else None
 
 
 def classify(changes: list[dict], plan_by_id: dict[int, Session], today: date,
-             blocking: list[Violation]) -> Classification:
+             blocking: list[Violation], blocks=None) -> Classification:
     affected = [c for c in changes if c["action"] != "keep"]
     reasons = [f"{v.rule}: {v.message}" for v in blocking]
     horizon = 0
     load_before = load_after = hard_before = hard_after = 0.0
 
     for change in affected:
-        before = plan_by_id[change["plan_session_id"]]
-        after = _after(before, change)
         action = change["action"]
-        dates = [before.local_date] + ([after.local_date] if after else [])
+        before = None if action == "add" else plan_by_id[change["plan_session_id"]]
+        after = _after(before, change, blocks)
+        dates = ([before.local_date] if before else []) + ([after.local_date] if after else [])
         horizon = max(horizon, max((d - today).days for d in dates))
-        if action == "cancel" and before.priority == "key":
+        if action == "add":
+            reasons.append(f"afegeix una sessió ({after.title}): no és automàtic")
+        elif action == "cancel" and before.priority == "key":
             reasons.append(f"cancel·la una sessió clau ({before.title})")
         elif action == "move":
             new_date = date.fromisoformat(change["new_date"])
@@ -68,8 +70,9 @@ def classify(changes: list[dict], plan_by_id: dict[int, Session], today: date,
                 reasons.append(f"mou {before.title} al passat")
         elif action not in ("modify", "replace", "cancel"):
             reasons.append(f"acció {action} no és automàtica")
-        load_before += session_seconds(before)
-        hard_before += session_easy_hard(before)[1]
+        if before:
+            load_before += session_seconds(before)
+            hard_before += session_easy_hard(before)[1]
         if after:
             load_after += session_seconds(after)
             hard_after += session_easy_hard(after)[1]

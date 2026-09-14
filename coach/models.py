@@ -33,6 +33,10 @@ class Block:
     end_date: date
     target_weekly_hours: float | None = None
     return_from_layoff: bool = False
+    goal_id: int | None = None
+
+    def covers(self, d: date) -> bool:
+        return self.start_date <= d <= self.end_date
 
 
 @dataclass
@@ -62,9 +66,11 @@ class DailyMetric:
 
 @dataclass
 class History:
-    """El que el validador sap del passat real."""
-    weekly_hours: dict[date, float] = field(default_factory=dict)  # dilluns -> hores
+    """El que el validador sap del passat real (fins al dilluns d'avui)."""
+    weekly_hours: dict[date, float] = field(default_factory=dict)  # dilluns -> hores reals
     daily_metrics: list[DailyMetric] = field(default_factory=list)
+    # dilluns -> esport -> segons de l'activitat més llarga d'aquella setmana
+    long_by_week: dict[date, dict[str, float]] = field(default_factory=dict)
 
 
 @dataclass

@@ -2,55 +2,175 @@
   "title": "Sortida de l'entrenador (spec §7)",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "report_type", "readiness", "summary",
-               "rationale", "session_changes", "flags", "questions_for_athlete"],
+  "required": [
+    "schema_version",
+    "report_type",
+    "readiness",
+    "summary",
+    "rationale",
+    "session_changes",
+    "flags",
+    "questions_for_athlete"
+  ],
   "properties": {
-    "schema_version": {"const": "1.0"},
-    "report_type": {"enum": ["daily", "weekly", "replan", "answer"]},
+    "schema_version": {
+      "const": "1.0"
+    },
+    "report_type": {
+      "enum": [
+        "daily",
+        "weekly",
+        "replan",
+        "answer",
+        "macro"
+      ]
+    },
     "readiness": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["verdict", "drivers", "confidence"],
+      "required": [
+        "verdict",
+        "drivers",
+        "confidence"
+      ],
       "properties": {
-        "verdict": {"enum": ["green", "amber", "red"]},
-        "drivers": {"type": "array", "items": {"type": "string"}},
-        "confidence": {"enum": ["high", "medium", "low"]}
+        "verdict": {
+          "enum": [
+            "green",
+            "amber",
+            "red"
+          ]
+        },
+        "drivers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        }
       }
     },
-    "summary": {"type": "string", "description": "Frase curta per a la pantalla d'avui"},
-    "rationale": {"type": "string", "description": "El perquè complet, en el llenguatge de l'atleta"},
+    "summary": {
+      "type": "string",
+      "description": "Frase curta per a la pantalla d'avui"
+    },
+    "rationale": {
+      "type": "string",
+      "description": "El perquè complet, en el llenguatge de l'atleta"
+    },
     "session_changes": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["plan_session_id", "action", "reason"],
+        "required": [
+          "action",
+          "reason"
+        ],
         "properties": {
-          "plan_session_id": {"type": "integer"},
-          "action": {"enum": ["keep", "modify", "replace", "move", "cancel"]},
+          "plan_session_id": {
+            "type": "integer",
+            "description": "Sessió d'origen. Obligatori per a keep/modify/replace/move/cancel; no s'usa per a add."
+          },
+          "action": {
+            "enum": [
+              "keep",
+              "modify",
+              "replace",
+              "move",
+              "cancel",
+              "add"
+            ]
+          },
           "new_session": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["sport", "session_type", "title", "structure_json"],
-            "description": "Obligatori per a modify/replace",
+            "required": [
+              "sport",
+              "session_type",
+              "title",
+              "structure_json"
+            ],
+            "description": "Obligatori per a modify/replace/add",
             "properties": {
-              "sport": {"enum": ["swim", "bike", "run", "strength", "brick", "multisport", "rest"]},
-              "session_type": {"type": "string"},
-              "title": {"type": "string"},
-              "structure_json": {"type": "string",
-                "description": "L'estructura de la sessió (contracte §6: steps o segments) serialitzada com a string JSON"},
-              "duration_sec_target": {"type": "integer"},
-              "distance_m_target": {"type": "number"},
-              "priority": {"enum": ["key", "support", "optional"]},
-              "rationale": {"type": "string"}
+              "sport": {
+                "enum": [
+                  "swim",
+                  "bike",
+                  "run",
+                  "strength",
+                  "brick",
+                  "multisport",
+                  "rest"
+                ]
+              },
+              "session_type": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "structure_json": {
+                "type": "string",
+                "description": "L'estructura de la sessió (contracte §6: steps o segments) serialitzada com a string JSON"
+              },
+              "duration_sec_target": {
+                "type": "integer"
+              },
+              "distance_m_target": {
+                "type": "number"
+              },
+              "priority": {
+                "enum": [
+                  "key",
+                  "support",
+                  "optional"
+                ]
+              },
+              "rationale": {
+                "type": "string"
+              },
+              "local_date": {
+                "type": "string",
+                "description": "Només per a add: dia de la sessió nova (YYYY-MM-DD), dins d'un bloc existent"
+              },
+              "parent_of_day": {
+                "enum": [
+                  "swim",
+                  "bike",
+                  "run"
+                ],
+                "description": "Només per a add d'un brick: esport de la sessió del mateix dia de què penja"
+              }
             }
           },
-          "new_date": {"type": "string", "description": "Obligatori per a move (YYYY-MM-DD)"},
-          "reason": {"type": "string"}
+          "new_date": {
+            "type": "string",
+            "description": "Obligatori per a move (YYYY-MM-DD)"
+          },
+          "reason": {
+            "type": "string"
+          }
         }
       }
     },
-    "flags": {"type": "array", "items": {"type": "string"}},
-    "questions_for_athlete": {"type": "array", "items": {"type": "string"}}
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "questions_for_athlete": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
   }
 }

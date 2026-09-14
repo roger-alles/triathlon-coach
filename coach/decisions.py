@@ -33,7 +33,8 @@ from dotenv import load_dotenv
 
 from coach.plan_loader import plan_from_db
 from coach.rules import validate_plan
-from coach.run import StaleProposal, apply_changes, apply_to_db, semantic_errors
+from coach.run import (StaleProposal, apply_changes, apply_to_db, blocking_signatures,
+                       semantic_errors)
 
 ROOT = Path(__file__).parent.parent
 EFFECT_COLS = ("report_id", "kind", "session_id", "new_session_id",
@@ -94,8 +95,13 @@ def _undo(conn, report_id: int) -> list[str]:
     #    clau/dia no admet la vella i la nova vives alhora)
     for e in effects:
         if e["kind"] == "created":
-            conn.execute("update plan_session set superseded_by=%s where id=%s",
-                         (e["session_id"], e["new_session_id"]))
+            if e["session_id"] == e["new_session_id"]:
+                # un add: no hi ha fila vella; desfer-lo és cancel·lar la nova
+                conn.execute("update plan_session set status='cancelled' where id=%s",
+                             (e["new_session_id"],))
+            else:
+                conn.execute("update plan_session set superseded_by=%s where id=%s",
+                             (e["session_id"], e["new_session_id"]))
     # 2) restaurar les velles amb l'estat que tenien, i els fills cap a elles
     for e in effects:
         if e["kind"] in ("moved", "superseded", "cancelled"):
@@ -131,16 +137,19 @@ def process_decision(conn, decision: tuple, plan_loader=plan_from_db) -> str:
         if status != "proposed":
             return _fail(conn, decision_id, f"només es pot aplicar una proposta pendent ('proposed'; aquest informe és '{status}')")
         changes = output.get("session_changes", [])
-        plan, goals, history, athlete = plan_loader(conn)
+        plan, goals, history, athlete, blocks = plan_loader(conn)
         active = [s for s in plan if s.status not in ("cancelled", "moved")]
         plan_by_id = {s.id: s for s in active}
-        errors = semantic_errors(changes, plan_by_id, athlete)
+        errors = semantic_errors(changes, plan_by_id, athlete, blocks)
         if not errors and active:
-            candidate = apply_changes(active, changes)
+            today = date.today()
+            preexisting = blocking_signatures(active, athlete, history, goals, today)
+            candidate = apply_changes(active, changes, blocks)
             violations = validate_plan(candidate, athlete, history, goals,
-                                       reference_date=date.today(),
+                                       reference_date=today,
                                        plan_start=min(s.local_date for s in active))
-            errors = [f"{v.rule}: {v.message}" for v in violations if v.blocking]
+            errors = [f"{v.rule}: {v.message}" for v in violations
+                      if v.blocking and (v.rule, v.message) not in preexisting]
         if errors:
             return _fail(conn, decision_id, "la proposta ja no encaixa amb el pla viu: "
                          + "; ".join(errors))

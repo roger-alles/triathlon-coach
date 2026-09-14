@@ -203,26 +203,43 @@ def _is_deload(weeks: list[Week], i: int) -> bool:
 
 # ─── regles ──────────────────────────────────────────────────────────
 
-def r1_weekly_ramp(weeks: list[Week], history: History) -> list[Violation]:
+def _is_past_week(wk: Week, reference_date: date | None) -> bool:
+    return reference_date is not None and wk.monday + timedelta(days=6) < reference_date
+
+
+def _effective_hours(wk: Week, history: History, reference_date: date | None) -> float:
+    """Hores d'una setmana tal com el validador les ha de comptar: les REALS si
+    la setmana ja ha passat i en tenim registre; si no, les planificades."""
+    if _is_past_week(wk, reference_date) and wk.monday in history.weekly_hours:
+        return history.weekly_hours[wk.monday]
+    return wk.hours
+
+
+def r1_weekly_ramp(weeks: list[Week], history: History,
+                   reference_date: date | None = None) -> list[Violation]:
     out = []
     full = [w for w in weeks if w.full]
     plan_has_layoff = any(w.layoff for w in weeks)
+    hours = {w.monday: _effective_hours(w, history, reference_date) for w in full}
     for i, wk in enumerate(full):
         if wk.layoff or wk.hours <= LOW_VOLUME_FLOOR_HOURS:
             continue
+        if _is_past_week(wk, reference_date):
+            continue  # el passat no es jutja: ja és realitat
         if i > 0 and full[i - 1].layoff:
             continue  # la base és una setmana de represa: no comparable
         if i > 0:
             prev = full[i - 1]
             target = next((s.block.target_weekly_hours for s in prev.sessions
                            if s.block and s.block.target_weekly_hours), None)
-            if target and prev.hours < 0.6 * target:
+            if target and hours[prev.monday] < 0.6 * target:
                 continue  # setmana anterior interrompuda
-        base = [w.hours for w in full[:i] if not w.layoff][-4:]
+        base = [hours[w.monday] for w in full[:i] if not w.layoff][-4:]
         if len(base) < 4 and not plan_has_layoff:
-            # completar amb l'historial real, però mai si hi ha hagut represa:
-            # la base pre-layoff no és comparable
-            hist = [h for _, h in sorted(history.weekly_hours.items())]
+            # completar amb l'historial real anterior al pla, però mai si hi ha
+            # hagut represa: la base pre-layoff no és comparable
+            first_monday = full[0].monday
+            hist = [h for m, h in sorted(history.weekly_hours.items()) if m < first_monday]
             base = hist[-(4 - len(base)):] + base
         if not base:
             continue
@@ -334,7 +351,8 @@ def r5_rest_days(weeks: list[Week]) -> list[Violation]:
     return out
 
 
-def r6_long_session_growth(weeks: list[Week]) -> list[Violation]:
+def r6_long_session_growth(weeks: list[Week], history: History | None = None,
+                           reference_date: date | None = None) -> list[Violation]:
     out = []
     full = [w for w in weeks if w.full]
     last_long: dict[str, tuple[date, float]] = {}
@@ -343,7 +361,15 @@ def r6_long_session_growth(weeks: list[Week]) -> list[Violation]:
         for s in wk.sessions:
             if s.session_type == "long":
                 longs[s.sport] = max(longs.get(s.sport, 0), session_seconds(s))
+        if history and _is_past_week(wk, reference_date):
+            # la llarga de referència d'una setmana passada és la que es va FER
+            for sport, real in history.long_by_week.get(wk.monday, {}).items():
+                if sport in longs:
+                    longs[sport] = real
         for sport, sec in longs.items():
+            if _is_past_week(wk, reference_date):
+                last_long[sport] = (wk.monday, sec)
+                continue
             if sport in last_long and not wk.layoff:
                 prev_date, prev_sec = last_long[sport]
                 prev_week_layoff = any(w.layoff for w in full[:i]
@@ -389,24 +415,34 @@ def r8_taper(plan: list[Session], weeks: list[Week], goals: list[Goal]) -> list[
                 f"cursa A '{goal.name}' sense bloc de taper"))
             continue
         taper_start = min(s.block.start_date for s in taper_sessions)
+        # Pla rodant: si el taper encara no és escrit sencer (la setmana
+        # rodant l'omple a trossos), el volum i la intensitat no es poden
+        # jutjar: avís, no bloqueig. Sencer = hi ha sessions fins a la vigília.
+        last_planned = max(s.local_date for s in plan if not s.is_goal_event)
+        covered = start <= taper_start and last_planned >= goal.event_date - timedelta(days=2)
+        severity = "blocking" if covered else "warning"
+        if not covered:
+            out.append(Violation("R8", "warning",
+                f"taper parcial per a '{goal.name}' (sessions fins a {last_planned}): "
+                f"el volum es jutjarà quan estigui escrit sencer"))
         days = (goal.event_date - taper_start).days + 1
         total_target = ((goal.profile or {}).get("target_times_sec") or {}).get("total")
         is_short = (total_target[1] <= 3 * 3600) if total_target else True
         lo, hi = (7, 10) if is_short else (12, 21)
         if not lo <= days <= hi:
-            out.append(Violation("R8", "blocking",
+            out.append(Violation("R8", severity,
                 f"taper de {days} dies per a '{goal.name}'; ha de ser {lo}-{hi}"))
         taper_hours = sum(session_seconds(s) for s in taper_sessions) / 3600
         prev_weeks = [w.hours for w in full if w.phase != "taper"][-2:]
         if prev_weeks:
             ratio = taper_hours / statistics.mean(prev_weeks)
             if not 0.30 <= ratio <= 0.70:
-                out.append(Violation("R8", "blocking",
+                out.append(Violation("R8", severity,
                     f"volum de taper {round(taper_hours,1)}h = {round(ratio*100)}% de "
                     f"les setmanes prèvies; ha de ser 30-70%"))
         hard = sum(session_easy_hard(s)[1] for s in taper_sessions)
         if hard == 0:
-            out.append(Violation("R8", "blocking",
+            out.append(Violation("R8", severity,
                 "el taper no manté gens d'intensitat (spec: volum baixa, intensitat es manté)"))
     return out
 
@@ -564,12 +600,12 @@ def validate_plan(plan: list[Session], athlete: Athlete, history: History,
         reference_date = min(s.local_date for s in plan)
     weeks = build_weeks(plan, plan_start)
     violations = []
-    violations += r1_weekly_ramp(weeks, history)
+    violations += r1_weekly_ramp(weeks, history, reference_date)
     violations += r2_deload_cadence(weeks, goals)
     violations += r3_key_separation(plan)
     violations += r4_intensity_distribution(weeks, goals)
     violations += r5_rest_days(weeks)
-    violations += r6_long_session_growth(weeks)
+    violations += r6_long_session_growth(weeks, history, reference_date)
     violations += r7_triathlon_frequency(weeks, goals)
     violations += r8_taper(plan, weeks, goals)
     violations += r9_novelty_near_race(plan, goals)

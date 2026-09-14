@@ -43,7 +43,7 @@ from coach.classify import classify
 from coach.context import build_context
 from coach.llm import CoachLLM, OutputCutOff, load_prompt
 from coach.plan_loader import plan_from_db
-from coach.models import Athlete, History, Session, Violation
+from coach.models import Athlete, Block, History, Session, Violation
 from coach.rules import validate_plan
 from coach.settings import apply_mode
 from coach.structure import validate_structure
@@ -52,6 +52,23 @@ ROOT = Path(__file__).parent.parent
 MAX_ATTEMPTS = 3  # 1 proposta + 2 correccions (spec §7 pas 4)
 
 NEW_SESSION_REQUIRED = ("sport", "session_type", "title", "structure_json")
+ADD_REQUIRED = NEW_SESSION_REQUIRED + ("local_date",)
+
+
+def _next_monday(d: date) -> date:
+    return d + timedelta(days=7 - d.weekday())
+
+
+def block_for(blocks: list[Block], d: date) -> Block | None:
+    return next((b for b in blocks if b.covers(d)), None)
+
+
+def _blocks_of(plan: list[Session]) -> list[Block]:
+    seen: dict[int, Block] = {}
+    for s in plan:
+        if s.block is not None:
+            seen.setdefault(s.block.id, s.block)
+    return list(seen.values())
 
 # Columnes que una versió nova hereta de la vella. Fins al 10/09 modify/move
 # n'ometien chained_after, test_spec, transition_practice (i modify,
@@ -64,52 +81,113 @@ class StaleProposal(Exception):
     """La proposta parla d'una sessió que ja no és la viva (o ja no és pendent)."""
 
 
+def _parse_new_session(new_session: dict, where: str, required: tuple,
+                       athlete: Athlete) -> list[str]:
+    """Comprova els camps i deixa new_session["structure"] parsejada."""
+    missing = [f for f in required if not new_session.get(f)]
+    if missing:
+        return [f"{where}: new_session sense {missing}"]
+    try:
+        new_session["structure"] = json.loads(new_session["structure_json"])
+    except json.JSONDecodeError as e:
+        return [f"{where}.new_session.structure_json: JSON invàlid ({e})"]
+    return [f"{where}.new_session: {e}"
+            for e in validate_structure(new_session["structure"], new_session["sport"], athlete)]
+
+
 def semantic_errors(changes: list[dict], plan_by_id: dict[int, Session],
-                    athlete: Athlete) -> list[str]:
+                    athlete: Athlete, blocks: list[Block] | None = None) -> list[str]:
     """Errors de forma que no cal cap regla per detectar.
 
     Efecte lateral volgut: si structure_json parseja bé, es deixa parsejada a
     new_session["structure"] perquè apply_changes i apply_to_db la reutilitzin.
+
+    `add` (sessió nova): new_session amb local_date dins d'un bloc (si es
+    passen `blocks`), i parent_of_day només si aquell dia hi ha (al pla viu o
+    en un altre add del mateix informe) una sessió d'aquell esport.
     """
     errors = []
+    added: set[tuple[date, str]] = set()
+    for change in changes:
+        if change.get("action") == "add":
+            ns = change.get("new_session") or {}
+            try:
+                added.add((date.fromisoformat(ns.get("local_date", "")), ns.get("sport")))
+            except ValueError:
+                pass
+    live_day_sport = {(s.local_date, s.sport) for s in plan_by_id.values()}
     for i, change in enumerate(changes):
         where = f"session_changes[{i}]"
+        action = change["action"]
+        if action == "add":
+            new_session = change.get("new_session")
+            if not new_session:
+                errors.append(f"{where}: action 'add' sense new_session")
+                continue
+            errs = _parse_new_session(new_session, where, ADD_REQUIRED, athlete)
+            if errs:
+                errors += errs
+                continue
+            try:
+                day = date.fromisoformat(new_session["local_date"])
+            except ValueError:
+                errors.append(f"{where}.new_session.local_date: data invàlida "
+                              f"({new_session['local_date']!r}, cal YYYY-MM-DD)")
+                continue
+            if blocks is not None and block_for(blocks, day) is None:
+                errors.append(f"{where}: cap bloc cobreix {day}; cal un macro "
+                              f"que creï el bloc abans d'afegir-hi sessions")
+            parent = new_session.get("parent_of_day")
+            if parent and (day, parent) not in live_day_sport | added:
+                errors.append(f"{where}: parent_of_day '{parent}' però el {day} no hi ha "
+                              f"cap sessió de {parent} al pla ni en aquest informe")
+            continue
+        if change.get("plan_session_id") is None:
+            errors.append(f"{where}: action '{action}' sense plan_session_id")
+            continue
         session = plan_by_id.get(change["plan_session_id"])
         if session is None:
             errors.append(f"{where}: plan_session_id {change['plan_session_id']} "
                           f"no existeix al pla")
             continue
-        action = change["action"]
         if action in ("modify", "replace"):
             new_session = change.get("new_session")
             if not new_session:
                 errors.append(f"{where}: action '{action}' sense new_session")
                 continue
-            missing = [f for f in NEW_SESSION_REQUIRED if not new_session.get(f)]
-            if missing:
-                errors.append(f"{where}: new_session sense {missing}")
-                continue
-            try:
-                new_session["structure"] = json.loads(new_session["structure_json"])
-            except json.JSONDecodeError as e:
-                errors.append(f"{where}.new_session.structure_json: JSON invàlid ({e})")
-                continue
-            for e in validate_structure(new_session["structure"],
-                                        new_session["sport"], athlete):
-                errors.append(f"{where}.new_session: {e}")
+            errors += _parse_new_session(new_session, where, NEW_SESSION_REQUIRED, athlete)
         if action == "move" and not change.get("new_date"):
             errors.append(f"{where}: action 'move' sense new_date")
     return errors
 
 
-def apply_changes(plan: list[Session], changes: list[dict]) -> list[Session]:
-    """Pla candidat amb els canvis aplicats (en memòria; l'original no es toca)."""
+def apply_changes(plan: list[Session], changes: list[dict],
+                  blocks: list[Block] | None = None) -> list[Session]:
+    """Pla candidat amb els canvis aplicats (en memòria; l'original no es toca).
+
+    Els `add` reben un id sintètic negatiu (-1, -2, …) i el bloc que cobreix
+    la seva data (dels `blocks` donats o, si no, dels que ja té el pla).
+    """
     candidate = {s.id: s for s in plan}
+    known_blocks = blocks if blocks is not None else _blocks_of(plan)
+    n_added = 0
     for change in changes:
-        session = candidate[change["plan_session_id"]]
         action = change["action"]
         if action == "keep":
             continue
+        if action == "add":
+            ns = change["new_session"]
+            n_added += 1
+            day = date.fromisoformat(ns["local_date"])
+            candidate[-n_added] = Session(
+                id=-n_added, local_date=day, sport=ns["sport"],
+                session_type=ns["session_type"], title=ns["title"],
+                structure=ns["structure"], block=block_for(known_blocks, day),
+                duration_sec_target=ns.get("duration_sec_target"),
+                priority=ns.get("priority", "support"),
+                chained=bool(ns.get("parent_of_day")))
+            continue
+        session = candidate[change["plan_session_id"]]
         if action == "cancel":
             del candidate[session.id]
         elif action == "move":
@@ -135,12 +213,30 @@ def _feedback_message(errors: list[str]) -> str:
             f"l'informe COMPLET (no només els canvis).")
 
 
+def blocking_signatures(plan: list[Session], athlete: Athlete, history: History,
+                        goals: list, today: date) -> set[tuple[str, str]]:
+    """(regla, missatge) de les violacions bloquejants que el pla JA té."""
+    if not plan:
+        return set()
+    return {(v.rule, v.message)
+            for v in validate_plan(plan, athlete, history, goals, reference_date=today,
+                                   plan_start=min(s.local_date for s in plan))
+            if v.blocking}
+
+
 def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
                 athlete: Athlete, history: History, goals: list,
-                today: date, report_type: str) -> dict:
+                today: date, report_type: str,
+                blocks: list[Block] | None = None) -> dict:
     """Passos 2-5 del bucle. Pur respecte de la DB: tot entra per paràmetre."""
     active = [s for s in plan if s.status not in ("cancelled", "moved")]
+    if blocks is None:
+        blocks = _blocks_of(active)
     plan_by_id = {s.id: s for s in active}
+    # El coach no pot empitjorar el pla, però no se'l castiga per una violació
+    # que ja hi era (p. ex. R1 amb hores reals sobre una setmana escrita a mà):
+    # les que ja existeixen, idèntiques, passen a avís.
+    preexisting = blocking_signatures(active, athlete, history, goals, today)
     messages = [{"role": "user", "content": context_json}]
     total_usage = {"model": None, "input_tokens": 0, "output_tokens": 0}
     validation_history: list[list[str]] = []
@@ -160,15 +256,17 @@ def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
         total_usage["input_tokens"] += usage["input_tokens"]
         total_usage["output_tokens"] += usage["output_tokens"]
 
-        errors = semantic_errors(output["session_changes"], plan_by_id, athlete)
+        errors = semantic_errors(output["session_changes"], plan_by_id, athlete, blocks)
         if not errors:
-            candidate = apply_changes(active, output["session_changes"])
+            candidate = apply_changes(active, output["session_changes"], blocks)
             violations = validate_plan(candidate, athlete, history, goals,
                                        reference_date=today,
                                        plan_start=min(s.local_date for s in active))
-            warnings = [v for v in violations if not v.blocking]
+            warnings = [v for v in violations
+                        if not v.blocking or (v.rule, v.message) in preexisting]
             errors = [f"{v.rule} [blocking]: {v.message}"
-                      for v in violations if v.blocking]
+                      for v in violations
+                      if v.blocking and (v.rule, v.message) not in preexisting]
 
         if not errors:
             return {"accepted": True, "output": output, "usage": total_usage,
@@ -225,9 +323,54 @@ def apply_to_db(conn, report_id: int, changes: list[dict], decision_id=None) -> 
     """
     effects: list[dict] = []
     inherited = ", ".join(INHERITED)
+
+    # Passada 1: sessions noves (add). Neixen al bloc que cobreix la data
+    # (i a l'objectiu del bloc); sense bloc, la proposta ha caducat.
+    created_by_day_sport: dict[tuple[date, str], int] = {}
+    pending_chains: list[tuple[int, date, str]] = []
+    for change in changes:
+        if change["action"] != "add":
+            continue
+        ns = change["new_session"]
+        day = date.fromisoformat(ns["local_date"])
+        block = conn.execute("""select id, goal_id from plan_block
+                                where %s between start_date and end_date
+                                order by start_date limit 1""", (day,)).fetchone()
+        if block is None:
+            raise StaleProposal(f"cap bloc cobreix {day} (cal macro)")
+        new_id = conn.execute("""
+            insert into plan_session (goal_id, block_id, local_date, sport,
+                session_type, title, structure, duration_sec_target,
+                distance_m_target, priority, rationale, created_by, version)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'coach', 1)
+            returning id""",
+            (block[1], block[0], day, ns["sport"], ns["session_type"], ns["title"],
+             json.dumps(ns["structure"]), ns.get("duration_sec_target"),
+             ns.get("distance_m_target"), ns.get("priority", "support"),
+             change["reason"])).fetchone()[0]
+        created_by_day_sport[(day, ns["sport"])] = new_id
+        if ns.get("parent_of_day"):
+            pending_chains.append((new_id, day, ns["parent_of_day"]))
+        effects.append(_effect(conn, report_id, "created", new_id, new_id,
+                               decision_id=decision_id))
+    # Passada 2: els bricks pengen del pare (creat en aquest informe o ja viu).
+    for new_id, day, parent_sport in pending_chains:
+        parent_id = created_by_day_sport.get((day, parent_sport))
+        if parent_id is None:
+            row = conn.execute("""select id from plan_session where local_date=%s
+                                  and sport=%s and superseded_by is null
+                                  and status='planned' limit 1""",
+                               (day, parent_sport)).fetchone()
+            if row is None:
+                raise StaleProposal(f"el {day} ja no hi ha cap sessió de {parent_sport} "
+                                    f"de què pugui penjar el brick")
+            parent_id = row[0]
+        conn.execute("update plan_session set chained_after=%s where id=%s",
+                     (parent_id, new_id))
+
     for change in changes:
         action = change["action"]
-        if action == "keep":
+        if action in ("keep", "add"):
             continue
         sid = change["plan_session_id"]
         prev_status = _guard(conn, sid)
@@ -297,7 +440,11 @@ def write_report(conn, report_type: str, snapshot: dict, result: dict, today: da
         summary_md = "## PROPOSTA DESCARTADA PEL VALIDADOR\n\n" + summary_md
     elif proposal_status in SUMMARY_PREFIX:
         summary_md = SUMMARY_PREFIX[proposal_status] + "\n\n" + summary_md
-    window = (today, today + timedelta(days=3 if report_type == "daily" else 7))
+    if report_type == "weekly":
+        monday = _next_monday(today)
+        window = (monday, monday + timedelta(days=6))
+    else:
+        window = (today, today + timedelta(days=3))
     return conn.execute("""
         insert into coach_report (report_type, window_start, window_end,
             input_snapshot, output, summary_md, model, input_tokens,
@@ -329,24 +476,31 @@ def main() -> None:
         sys.exit("Falta DATABASE_URL al .env.")
     today = date.today()
     # el preview mira demà, però la validació "res al passat" segueix ancorada
-    # al dia real: les sessions d'avui encara no són passat a les 21:30
-    target = today + timedelta(days=1) if args.tomorrow else today
+    # al dia real: les sessions d'avui encara no són passat a les 21:30.
+    # El setmanal (diumenge) parla de la setmana que comença demà: bloc i
+    # finestra del dilluns vinent.
+    if args.report_type == "weekly":
+        target = _next_monday(today)
+    else:
+        target = today + timedelta(days=1) if args.tomorrow else today
 
     # Connexió curta només per llegir. El pooler de Supabase mata connexions
     # ocioses: mantenir-ne una oberta durant la crida al model (1-3 min) va
     # perdre dos informes ja generats el 30-31/08.
     with psycopg.connect(url) as conn:
         snapshot = build_context(conn, today, report_for=target)
-        if args.tomorrow:
+        if args.report_type == "weekly":
+            snapshot["mode"] = "weekly"
+        elif args.tomorrow:
             snapshot["mode"] = "evening_preview"
-        plan, goals, history, athlete = plan_from_db(conn)
+        plan, goals, history, athlete, blocks = plan_from_db(conn, today)
         mode = "dry_run" if args.dry_run else apply_mode(conn)
 
     result = coach_cycle(
         llm=CoachLLM(), system=load_prompt(f"{args.report_type}-v1"),
         context_json=json.dumps(snapshot, ensure_ascii=False),
         plan=plan, athlete=athlete, history=history, goals=goals,
-        today=today, report_type=args.report_type)
+        today=today, report_type=args.report_type, blocks=blocks)
 
     # Auto o proposta? Es classifica sempre (també en dry_run: l'app ho ensenya
     # com a "mode prova"), però només s'aplica en mode hybrid.
@@ -355,7 +509,7 @@ def main() -> None:
     if result["accepted"]:
         active = {s.id: s for s in plan if s.status not in ("cancelled", "moved")}
         classification = classify(result["output"]["session_changes"], active,
-                                  today, blocking=[]).to_dict()
+                                  today, blocking=[], blocks=blocks).to_dict()
         if mode == "hybrid":
             proposal_status = "auto_applied" if classification["auto"] else "proposed"
 

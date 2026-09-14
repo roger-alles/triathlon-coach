@@ -77,11 +77,13 @@ def _goals(conn, today: date) -> list[dict]:
     return out
 
 
-def _current_block(conn, today: date) -> dict | None:
+def block_for(conn, day: date) -> dict | None:
+    """El bloc del pla que cobreix `day` (el diari: avui; el setmanal: el
+    dilluns vinent, no el bloc que acaba diumenge)."""
     r = conn.execute("""select phase, name, start_date, end_date,
                         target_weekly_hours, fallback, intent, return_from_layoff
                         from plan_block where %s between start_date and end_date
-                        order by start_date limit 1""", (today,)).fetchone()
+                        order by start_date limit 1""", (day,)).fetchone()
     if not r:
         return None
     return {"phase": r[0], "name": r[1], "start_date": str(r[2]), "end_date": str(r[3]),
@@ -100,7 +102,8 @@ def _recovery(conn, today: date) -> list[dict]:
     return queries._rows_to_dicts(cur)
 
 
-def _plan_ahead(conn, today: date) -> list[dict]:
+def _plan_ahead(conn, today: date, until: date | None = None) -> list[dict]:
+    until = until or today + timedelta(days=PLAN_AHEAD_DAYS)
     cur = conn.execute("""
         select id, local_date, sport, session_type, title, priority, status,
                duration_sec_target, distance_m_target, rationale, is_test,
@@ -109,7 +112,7 @@ def _plan_ahead(conn, today: date) -> list[dict]:
         where superseded_by is null
           and local_date between %s and %s
         order by local_date, priority""",
-        (today, today + timedelta(days=PLAN_AHEAD_DAYS)))
+        (today, until))
     rows = queries._rows_to_dicts(cur)
     # l'estructura detallada només dels 3 propers dies: és sobre el que el
     # coach decideix; de la resta en té prou amb tipus, títol i durada
@@ -197,13 +200,15 @@ def build_context(conn, today: date | None = None,
         "mode": "morning" if report_for == today else "evening_preview",
         "athlete": _athlete(conn),
         "goals": _goals(conn, today),
-        "current_block": _current_block(conn, today),
+        "current_block": block_for(conn, report_for),
         "activities_last_28d": queries.recent_activities(conn, RECENT_DAYS),
         "form_curve_28d": queries.form_curve(conn, RECENT_DAYS),
         "recovery_last_14d": _recovery(conn, today),
         "compliance": _past_compliance(conn, today),
         "test_results": _test_results(conn),
-        "plan_next_14d": _plan_ahead(conn, today),
+        # el setmanal veu dues setmanes des del dilluns de què parla
+        "plan_next_14d": _plan_ahead(conn, today, max(today + timedelta(days=PLAN_AHEAD_DAYS),
+                                                      report_for + timedelta(days=13))),
         "recent_athlete_notes": _recent_notes(conn, today),
         "athlete_answers_last_7d": _recent_answers(conn, today),
         "logistics_next_10d": _logistics(conn, today),

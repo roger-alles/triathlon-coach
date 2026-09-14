@@ -163,3 +163,27 @@ def test_logistics_next_days_reads_logistics_task_with_detail_and_blocking():
                      "blocking": True, "done": False}]
     assert "logistics_task" in conn.sql
     assert "done = false" in conn.sql  # les fetes ja no cal recordar-les
+
+
+def test_block_for_uses_the_report_day_not_today():
+    # S4a: el setmanal corre diumenge però parla de la setmana que comença
+    # demà: el bloc que rep és el del dilluns vinent, no el que acaba avui.
+    from coach.context import block_for
+    conn = _Conn(["phase", "name", "start_date", "end_date", "target_weekly_hours",
+                  "fallback", "intent", "return_from_layoff"],
+                 [("recovery", "Recuperació", date(2026, 9, 28), date(2026, 10, 18), 4.0, None, "descans actiu", False)])
+    block = block_for(conn, date(2026, 9, 28))
+    assert block["phase"] == "recovery" and block["start_date"] == "2026-09-28"
+    assert "between start_date and end_date" in conn.sql
+
+
+def test_build_context_weekly_takes_the_block_and_plan_of_next_monday():
+    from coach.context import build_context
+    today = date(2026, 9, 27)          # diumenge
+    next_monday = date(2026, 9, 28)
+    conn = _full_conn()
+    build_context(conn, today, report_for=next_monday)
+    block_query = next(q for q in conn.queries if "from plan_block" in q)
+    assert "between start_date and end_date" in block_query
+    plan_query = next(q for q in conn.queries if "from plan_session" in q and "between" in q)
+    assert plan_query
