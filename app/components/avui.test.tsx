@@ -3,6 +3,7 @@ jest.mock('@/lib/api', () => ({
   getLatestDailyReport: jest.fn(),
   getSessionsForDay: jest.fn(),
   getAnswers: jest.fn(),
+  getAnswersForReports: jest.fn(),
   sendAnswer: jest.fn(),
   getOpenProposals: jest.fn(),
   getSessionsByIds: jest.fn(),
@@ -15,7 +16,7 @@ jest.mock('@/lib/supabase', () => ({ supabase: { auth: { signOut: jest.fn() } } 
 
 import { render, screen, userEvent, waitFor } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getAnswers, getDecisions, getLatestDailyReport, getOpenProposals, getSessionsByIds, getSessionsForDay, getSetting, sendAnswer, sendDecision } from '@/lib/api';
+import { getAnswers, getAnswersForReports, getDecisions, getLatestDailyReport, getOpenProposals, getSessionsByIds, getSessionsForDay, getSetting, sendAnswer, sendDecision } from '@/lib/api';
 import Avui from './avui';
 
 const mockGetAnswers = getAnswers as jest.Mock;
@@ -75,6 +76,7 @@ beforeEach(() => {
   mockReport.mockResolvedValue(report);
   mockSessions.mockResolvedValue([session]);
   mockGetAnswers.mockResolvedValue([]);
+  (getAnswersForReports as jest.Mock).mockResolvedValue(new Map());
   mockSendAnswer.mockResolvedValue(undefined);
   (getOpenProposals as jest.Mock).mockResolvedValue([]);
   (getSessionsByIds as jest.Mock).mockResolvedValue(new Map([[1, { id: 1, local_date: '2026-08-29', sport: 'run', title: 'Sèries 5×1000', status: 'planned' }]]));
@@ -195,4 +197,21 @@ test('una proposta oberta d\'un altre informe també surt, i Aplica envia la dec
   await user.press(screen.getByText('Aplica'));
   await waitFor(() => expect(sendDecision).toHaveBeenCalledWith(9, 'apply'));
   await waitFor(() => expect(getOpenProposals).toHaveBeenCalledTimes(2));
+});
+
+test("una proposta setmanal amb pregunta es respon des de la targeta amb l'id de la proposta", async () => {
+  (getOpenProposals as jest.Mock).mockResolvedValue([{
+    ...proposal, id: 41, reportType: 'weekly', scope: 'week', status: 'proposed', classification: { auto: false, reasons: ['afegeix sessions'] },
+    summary: 'Setmana de recuperació', rationale: 'Toca pair.', questions: ['Com tens el genoll?'],
+    changes: [{ action: 'add', reason: 'suau', new_session: { sport: 'swim', title: 'Natació suau', local_date: '2026-08-31', session_type: 'easy', duration_sec_target: 2400 } }],
+  }]);
+  mockReport.mockResolvedValue({ ...report, questions: [] });
+  await renderAvui();
+  expect(await screen.findByText(/\+ dl 31\/08 · 🏊 Natació suau · 40 min/)).toBeOnTheScreen();
+  await waitFor(() => expect(getAnswersForReports).toHaveBeenCalledWith([41]));
+  const user = userEvent.setup();
+  await user.type(screen.getByPlaceholderText(/Respon/), 'Bé');
+  await user.press(screen.getByText('Envia'));
+  await waitFor(() => expect(mockSendAnswer).toHaveBeenCalledWith(41, 'Com tens el genoll?', 'Bé'));
+  expect(await screen.findByText(/Tu: Bé/)).toBeOnTheScreen();
 });

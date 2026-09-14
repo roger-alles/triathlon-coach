@@ -233,3 +233,32 @@ def test_athlete_without_profile_has_no_profile_keys():
     row = ATHLETE_ROW[:-1] + ({},)
     athlete = _athlete(_Conn(by_table={"from athlete where": (ATHLETE_COLS, [row])}))
     assert "constraints" not in athlete and "notes" not in athlete
+
+
+def test_weekly_context_describes_the_week_to_write():
+    from coach.context import build_context
+
+    today = date(2026, 9, 27)           # diumenge
+    monday = date(2026, 9, 28)
+    block_cols = ("phase", "name", "start_date", "end_date", "target_weekly_hours",
+                  "fallback", "intent", "return_from_layoff", "id")
+    block_row = ("recovery", "Recuperació", date(2026, 9, 28), date(2026, 10, 11), 3.0,
+                 "dormir", "pair la cursa", False, 9)
+    conn = _full_conn(**{"between start_date and end_date": (block_cols, [block_row]),
+                         "count(*) from plan_session": (("n",), [(0,)])})
+    ctx = build_context(conn, today, report_for=monday)
+    week = ctx["week_to_write"]
+    assert week["monday"] == "2026-09-28" and week["sunday"] == "2026-10-04"
+    assert week["sessions_planned"] == 0
+    assert week["block"]["id"] == 9 and week["block"]["target_weekly_hours"] == 3.0
+    # el diari (report_for == today) no en porta
+    assert "week_to_write" not in build_context(_full_conn(), today)
+
+
+def test_weekly_context_without_block_says_so():
+    from coach.context import build_context
+
+    conn = _full_conn(**{"count(*) from plan_session": (("n",), [(4,)])})
+    ctx = build_context(conn, date(2026, 9, 27), report_for=date(2026, 9, 28))
+    assert ctx["week_to_write"]["sessions_planned"] == 4
+    assert "block" not in ctx["week_to_write"]   # compact() treu els None

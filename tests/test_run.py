@@ -150,6 +150,8 @@ def test_main_holds_no_db_connection_while_the_model_thinks(monkeypatch):
             open_conns.remove(self)
         def transaction(self):
             return self
+        def execute(self, sql, params=None):
+            return type("R", (), {"rowcount": 0, "fetchone": lambda self_: None})()
 
     def fake_connect(url):
         connect_calls.append(url)
@@ -379,6 +381,20 @@ def test_semantic_add_requires_date_block_and_parent_that_exists():
     assert semantic_errors([brick5], plan_by_id, ATHLETE, blocks=blocks) == []
 
 
+def test_weekly_adds_must_fall_in_the_week_being_written():
+    plan_by_id = {s.id: s for s in make_plan()}
+    blocks = [Block(id=1, phase="build", start_date=MON, end_date=MON + timedelta(days=13),
+                    target_weekly_hours=4, goal_id=2)]
+    week = (MON, MON + timedelta(days=6))
+    inside = add_change(day_offset=2)
+    outside = add_change(day_offset=9)
+    assert semantic_errors([inside], plan_by_id, ATHLETE, blocks=blocks, week=week) == []
+    errs = semantic_errors([outside], plan_by_id, ATHLETE, blocks=blocks, week=week)
+    assert any(str(MON) in e and "setmana" in e for e in errs)
+    # sense setmana (diari, macro) no hi ha restricció
+    assert semantic_errors([outside], plan_by_id, ATHLETE, blocks=blocks) == []
+
+
 def test_semantic_non_add_actions_still_need_plan_session_id():
     plan_by_id = {s.id: s for s in make_plan()}
     errs = semantic_errors([{"action": "cancel", "reason": "x"}], plan_by_id, ATHLETE)
@@ -524,6 +540,8 @@ def test_run_report_macro_uses_opus_the_macro_prompt_and_is_always_a_proposal(mo
         def __enter__(self): return self
         def __exit__(self, *a): pass
         def transaction(self): return self
+        def execute(self, sql, params=None):
+            return type("R", (), {"rowcount": 0, "fetchone": lambda self_: None})()
 
     monkeypatch.setattr(run.psycopg, "connect", lambda url: FakeConn())
     monkeypatch.setattr(run, "build_context", lambda conn, today, report_for=None: {"today": str(today)})
@@ -595,3 +613,95 @@ def test_cut_off_feedback_for_a_macro_talks_about_blocks_not_keeps():
     assert result["accepted"] is True
     msg = result["validation_errors"][0][0]
     assert "block_changes" in msg and "keep" not in msg
+
+
+# ─── S4b: setmana rodant ────────────────────────────────────────────────
+
+def _run_report_harness(monkeypatch, calls, output):
+    import coach.run as run
+
+    class FakeConn:
+        def __init__(self): self.sql = []
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def transaction(self): return self
+        def execute(self, sql, params=None):
+            self.sql.append((sql, params)); calls.setdefault("sql", []).append((sql, params))
+            class R:
+                rowcount = 1
+                def fetchone(self_inner): return None
+                def fetchall(self_inner): return []
+            return R()
+
+    monkeypatch.setattr(run.psycopg, "connect", lambda url: FakeConn())
+    monkeypatch.setattr(run, "build_context", lambda conn, today, report_for=None: {"today": str(today)})
+    monkeypatch.setattr(run, "plan_from_db", lambda conn, today=None: (make_plan(), [], History(), ATHLETE, [_block()]))
+    monkeypatch.setattr(run, "apply_mode", lambda conn: "hybrid")
+    monkeypatch.setattr(run, "CoachLLM", lambda model=None: None)
+    monkeypatch.setattr(run, "load_prompt", lambda name: calls.setdefault("prompts", []).append(name) or "prompt")
+    def fake_cycle(**kw):
+        calls["cycle"] = kw
+        return {"accepted": True, "output": output,
+                "usage": {"model": "m", "input_tokens": 1, "output_tokens": 1},
+                "validation_errors": [], "warnings": []}
+    monkeypatch.setattr(run, "coach_cycle", fake_cycle)
+    monkeypatch.setattr(run, "write_report", lambda *a, **kw: calls.update(write_args=a, write=kw) or 42)
+    return run
+
+
+def test_run_report_weekly_uses_prompt_v2_week_scope_and_the_right_window(monkeypatch):
+    calls = {}
+    sunday = date(2026, 9, 27)
+    output = {"schema_version": "1.3", "report_type": "weekly", "session_changes": [],
+              "readiness": {"verdict": "green", "drivers": [], "confidence": "high"},
+              "summary": "s", "rationale": "r", "flags": [], "questions_for_athlete": []}
+    run = _run_report_harness(monkeypatch, calls, output)
+    run.run_report("weekly", url="postgres://x", today=sunday)
+    assert calls["prompts"] == ["weekly-v2"]
+    assert calls["cycle"]["week"] == (date(2026, 9, 28), date(2026, 10, 4))
+    assert calls["write"]["scope"] == "week"
+    # write_report rep el dia real (diumenge) i calcula ell el dilluns vinent
+    assert calls["write_args"][4] == sunday
+    # els objectius amb data passada es donen per fets abans de construir el context
+    goal_sql = next(sql for sql, _ in calls["sql"] if "update goal" in sql)
+    assert "completed" in goal_sql and "event_date <" in goal_sql
+    assert next(p for sql, p in calls["sql"] if "update goal" in sql) == (sunday,)
+
+
+def test_run_report_daily_and_macro_pass_no_week(monkeypatch):
+    calls = {}
+    output = {"schema_version": "1.3", "report_type": "daily", "session_changes": [],
+              "readiness": {"verdict": "green", "drivers": [], "confidence": "high"},
+              "summary": "s", "rationale": "r", "flags": [], "questions_for_athlete": []}
+    run = _run_report_harness(monkeypatch, calls, output)
+    run.run_report("daily", url="postgres://x", today=date(2026, 9, 27))
+    assert calls["cycle"]["week"] is None and calls["write"]["scope"] == "sessions"
+    assert calls["prompts"] == ["daily-v1"]
+
+
+def test_apply_to_db_add_keeps_the_sessions_own_rationale():
+    conn = DbConn({})
+    conn.blocks = {MON + timedelta(days=2): (1, 2)}
+    change = add_change(day_offset=2)
+    change["new_session"]["rationale"] = "rodar suau per pair la cursa"
+    semantic_errors([change], {}, ATHLETE, blocks=[_block()])
+    apply_to_db(conn, 7, [change])
+    insert = next(p for sql, p in conn.calls if "insert into plan_session" in sql)
+    assert "rodar suau per pair la cursa" in insert
+
+
+def test_a_cycle_cut_off_every_time_still_yields_a_writable_report():
+    from coach.llm import OutputCutOff
+    from coach.run import write_report
+
+    class AlwaysCut:
+        def generate(self, system, messages, report_type="daily"):
+            raise OutputCutOff("sostre")
+    result = coach_cycle(llm=AlwaysCut(), system="", context_json="{}", plan=make_plan(),
+                         athlete=ATHLETE, history=History(), goals=[], today=MON,
+                         report_type="weekly", blocks=[_block()])
+    assert result["accepted"] is False and len(result["validation_errors"]) == MAX_ATTEMPTS
+    assert result["output"]["session_changes"] == [] and result["output"]["summary"]
+    conn = DbConn({})
+    write_report(conn, "weekly", {}, result, MON, proposal_status="none", scope="week")
+    assert any("insert into coach_report" in sql for sql, _ in conn.calls)

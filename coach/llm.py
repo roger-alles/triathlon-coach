@@ -26,7 +26,9 @@ DEFAULT_MODEL = "claude-sonnet-5"
 # pressupost amb la resposta: curt de tokens = JSON tallat a mitges. El
 # setmanal del 06/09 en va gastar 14.9k amb un sostre de 16k; per sobre de 16k
 # l'SDK exigeix streaming (no costa res si no s'usa).
-MAX_TOKENS = {"daily": 16000, "weekly": 64000, "macro": 64000}
+# 14/09: amb 64k, un setmanal es va quedar en bucle escrivint "\\n" dins d'un
+# string JSON fins al sostre (0,64 € l'intent); una setmana sencera són ~10k.
+MAX_TOKENS = {"daily": 16000, "weekly": 32000, "macro": 32000}
 STREAM_ABOVE = 16000
 
 
@@ -68,7 +70,12 @@ class CoachLLM:
             system=system,
             messages=_with_cached_context(messages),
             output_config={"format": {"type": "json_schema",
-                                      "schema": OUTPUT_SCHEMA}},
+                                      "schema": OUTPUT_SCHEMA},
+                           # esforç del raonament adaptatiu. MAI "medium" amb
+                           # sortida estructurada: sonda del 14/09 — text
+                           # corromput i new_session omès. "high" és el que
+                           # sempre ha funcionat.
+                           "effort": os.getenv("COACH_EFFORT", "high")},
         )
         if max_tokens > STREAM_ABOVE:
             with self.client.messages.stream(**request) as stream:
@@ -76,13 +83,12 @@ class CoachLLM:
         else:
             response = self.client.messages.create(**request)
         if response.stop_reason == "max_tokens":
-            n_text = sum(len(b.text) for b in response.content if b.type == "text")
-            n_think = sum(len(getattr(b, "thinking", "") or "") for b in response.content
-                          if b.type == "thinking")
+            text = "".join(b.text for b in response.content if b.type == "text")
+            head, tail = text[:300].replace("\n", " "), text[-200:].replace("\n", " ")
             raise OutputCutOff(
-                f"resposta tallada per longitud (sostre {max_tokens} tokens; "
-                f"{response.usage.output_tokens} generats: {n_text} caràcters de JSON, "
-                f"{n_think} de raonament)")
+                f"resposta tallada per longitud (sostre {max_tokens}; "
+                f"{response.usage.output_tokens} tokens generats, {len(text)} caràcters de "
+                f"JSON — la resta és raonament invisible). Cap: {head!r} … Cua: {tail!r}")
         if response.stop_reason != "end_turn":
             raise RuntimeError(
                 f"resposta incompleta del model (stop_reason="

@@ -86,14 +86,30 @@ def block_for(conn, day: date) -> dict | None:
     """El bloc del pla que cobreix `day` (el diari: avui; el setmanal: el
     dilluns vinent, no el bloc que acaba diumenge)."""
     r = conn.execute("""select phase, name, start_date, end_date,
-                        target_weekly_hours, fallback, intent, return_from_layoff
+                        target_weekly_hours, fallback, intent, return_from_layoff, id
                         from plan_block where %s between start_date and end_date
                         order by start_date limit 1""", (day,)).fetchone()
     if not r:
         return None
-    return {"phase": r[0], "name": r[1], "start_date": str(r[2]), "end_date": str(r[3]),
+    return {"id": r[8] if len(r) > 8 else None,
+            "phase": r[0], "name": r[1], "start_date": str(r[2]), "end_date": str(r[3]),
             "target_weekly_hours": float(r[4]) if r[4] else None,
             "fallback": r[5], "intent": r[6], "return_from_layoff": r[7]}
+
+
+def _week_to_write(conn, monday: date) -> dict:
+    """La setmana que el setmanal ha d'escriure o ajustar: quantes sessions
+    vives ja té i dins de quin bloc cau (S4b)."""
+    sunday = monday + timedelta(days=6)
+    n = conn.execute("""select count(*) from plan_session
+                        where local_date between %s and %s
+                          and status = 'planned' and superseded_by is null""",
+                     (monday, sunday)).fetchone()
+    block = block_for(conn, monday)
+    return {"monday": monday.isoformat(), "sunday": sunday.isoformat(),
+            "sessions_planned": int(n[0]) if n else 0,
+            "block": {k: block[k] for k in ("id", "phase", "name", "target_weekly_hours",
+                                            "intent", "fallback")} if block else None}
 
 
 def _macro(conn) -> list[dict]:
@@ -229,6 +245,9 @@ def build_context(conn, today: date | None = None,
         "athlete": _athlete(conn),
         "goals": _goals(conn, today),
         "current_block": block_for(conn, report_for),
+        # el setmanal: la setmana del dilluns vinent, per escriure-la o ajustar-la
+        "week_to_write": (_week_to_write(conn, report_for)
+                          if report_for > today and report_for.weekday() == 0 else None),
         "macro": _macro(conn),
         "history_weekly_hours": _history_weeks(conn, today),
         "activities_last_28d": queries.recent_activities(conn, RECENT_DAYS),

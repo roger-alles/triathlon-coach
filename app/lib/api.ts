@@ -21,11 +21,14 @@ export type DailyReport = {
 // --- Propostes del coach (S1a al servidor, S1b a l'app) ---------------------
 
 export type SessionChange = {
-  plan_session_id: number;
-  action: 'modify' | 'replace' | 'move' | 'cancel';
+  plan_session_id?: number; // absent en un add (la sessió encara no existeix)
+  action: 'add' | 'modify' | 'replace' | 'move' | 'cancel';
   reason: string;
   new_date?: string;
-  new_session?: { sport: string; title: string; duration_sec_target?: number; priority?: string; rationale?: string };
+  new_session?: {
+    sport: string; title: string; local_date?: string; session_type?: string;
+    duration_sec_target?: number; priority?: string; rationale?: string;
+  };
 };
 
 export type ProposalStatus = 'none' | 'auto_applied' | 'proposed' | 'applied' | 'discarded' | 'undone' | 'failed';
@@ -49,6 +52,9 @@ export type Proposal = {
   classification: { auto: boolean; reasons: string[] } | null;
   changes: SessionChange[];
   blockChanges: BlockChange[];
+  summary: string;
+  rationale: string;
+  questions: string[];
 };
 
 export type PlanBlockFull = {
@@ -88,11 +94,14 @@ function proposalOf(row: Record<string, any>): Proposal | null {
   const changes: SessionChange[] = (row.output?.session_changes ?? [])
     .filter((c: any) => c.action !== 'keep')
     .map((c: any) => {
-      const out: SessionChange = { plan_session_id: c.plan_session_id, action: c.action, reason: c.reason ?? '' };
+      const out: SessionChange = { action: c.action, reason: c.reason ?? '' };
+      if (c.plan_session_id != null) out.plan_session_id = c.plan_session_id;
       if (c.new_date) out.new_date = c.new_date;
       if (c.new_session) {
         const n = c.new_session;
         out.new_session = { sport: n.sport, title: n.title };
+        if (n.local_date) out.new_session.local_date = n.local_date;
+        if (n.session_type) out.new_session.session_type = n.session_type;
         if (n.duration_sec_target != null) out.new_session.duration_sec_target = n.duration_sec_target;
         if (n.priority) out.new_session.priority = n.priority;
         if (n.rationale) out.new_session.rationale = n.rationale;
@@ -116,6 +125,9 @@ function proposalOf(row: Record<string, any>): Proposal | null {
     classification: cl ? { auto: !!cl.auto, reasons: cl.reasons ?? [] } : null,
     changes,
     blockChanges,
+    summary: row.output?.summary ?? '',
+    rationale: row.output?.rationale ?? '',
+    questions: row.output?.questions_for_athlete ?? [],
   };
 }
 
@@ -555,6 +567,25 @@ export async function getAnswers(reportId: number): Promise<AthleteAnswer[]> {
     .order('id');
   if (error) throw new Error(error.message);
   return (data ?? []) as AthleteAnswer[];
+}
+
+// Respostes de diversos informes alhora (les propostes obertes d'Avui), per id d'informe.
+export async function getAnswersForReports(reportIds: number[]): Promise<Map<number, AthleteAnswer[]>> {
+  const unique = Array.from(new Set(reportIds));
+  const map = new Map<number, AthleteAnswer[]>();
+  if (unique.length === 0) return map;
+  const { data, error } = await supabase
+    .from('athlete_answer')
+    .select('id, report_id, question, answer')
+    .in('report_id', unique)
+    .order('id');
+  if (error) throw new Error(error.message);
+  for (const r of (data ?? []) as Record<string, any>[]) {
+    const list = map.get(r.report_id) ?? [];
+    list.push({ id: r.id, question: r.question, answer: r.answer });
+    map.set(r.report_id, list);
+  }
+  return map;
 }
 
 export async function getSessionsForDay(dateISO: string): Promise<PlanSession[]> {

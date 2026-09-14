@@ -1,18 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import LogSession from '@/components/log-session';
 import ProposalCard from '@/components/proposal-card';
+import QuestionRow from '@/components/question-row';
 import { ThemedText } from '@/components/themed-text';
 
 import {
@@ -23,6 +15,7 @@ import {
   Proposal,
   SessionRef,
   getAnswers,
+  getAnswersForReports,
   getBlocks,
   getDecisions,
   getLatestDailyReport,
@@ -50,6 +43,7 @@ export default function Avui() {
   const [report, setReport] = useState<DailyReport | null>(null);
   const [sessions, setSessions] = useState<PlanSession[]>([]);
   const [answers, setAnswers] = useState<AthleteAnswer[]>([]);
+  const [proposalAnswers, setProposalAnswers] = useState<Map<number, AthleteAnswer[]>>(new Map());
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [refs, setRefs] = useState<Map<number, SessionRef>>(new Map());
   const [blockRefs, setBlockRefs] = useState<Map<number, { id: number; name: string | null; phase: string }>>(new Map());
@@ -73,15 +67,17 @@ export default function Avui() {
       // la proposta de l'informe d'avui primer; després les obertes d'altres informes
       const all = [...(r?.proposal ? [r.proposal] : []), ...open.filter((p) => p.id !== r?.proposal?.id)];
       setProposals(all);
-      const ids = all.flatMap((p) => p.changes.map((c) => c.plan_session_id));
+      const ids = all.flatMap((p) => p.changes.flatMap((c) => (c.plan_session_id != null ? [c.plan_session_id] : [])));
       const needsBlocks = all.some((p) => (p.blockChanges ?? []).length > 0);
-      const [answersNow, refsNow, decisionsNow, blocksNow] = await Promise.all([
+      const [answersNow, refsNow, decisionsNow, blocksNow, proposalAnswersNow] = await Promise.all([
         r ? getAnswers(r.id) : Promise.resolve([]),
         getSessionsByIds(ids),
         getDecisions(all.map((p) => p.id)),
         needsBlocks ? getBlocks() : Promise.resolve([]),
+        getAnswersForReports(all.map((p) => p.id)),
       ]);
       setAnswers(answersNow);
+      setProposalAnswers(proposalAnswersNow);
       setRefs(refsNow);
       setDecisions(decisionsNow);
       setBlockRefs(new Map(blocksNow.map((b) => [b.id, { id: b.id, name: b.name, phase: b.phase }])));
@@ -142,6 +138,15 @@ export default function Avui() {
             await sendDecision(p.id, kind);
             await load();
           }}
+          answers={proposalAnswers.get(p.id) ?? []}
+          onAnswer={async (question, text) => {
+            await sendAnswer(p.id, question, text);
+            setProposalAnswers((prev) => {
+              const next = new Map(prev);
+              next.set(p.id, [...(prev.get(p.id) ?? []), { id: -Date.now(), question, answer: text }]);
+              return next;
+            });
+          }}
         />
       ))}
 
@@ -196,56 +201,6 @@ export default function Avui() {
   );
 }
 
-function QuestionRow({
-  question,
-  existing,
-  onSend,
-}: {
-  question: string;
-  existing?: string;
-  onSend: (text: string) => Promise<void>;
-}) {
-  const [draft, setDraft] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [rowError, setRowError] = useState<string | null>(null);
-
-  return (
-    <View style={styles.questionRow}>
-      <ThemedText style={styles.step}>· {question}</ThemedText>
-      {existing ? (
-        <ThemedText style={styles.answerDone}>Tu: {existing}</ThemedText>
-      ) : (
-        <View style={styles.answerRow}>
-          <TextInput
-            style={styles.answerInput}
-            placeholder="Respon al coach…"
-            placeholderTextColor="#8a8a8a"
-            value={draft}
-            onChangeText={setDraft}
-            multiline
-          />
-          <TouchableOpacity
-            style={[styles.answerButton, !draft.trim() && { opacity: 0.4 }]}
-            disabled={busy || !draft.trim()}
-            onPress={async () => {
-              setBusy(true);
-              setRowError(null);
-              try {
-                await onSend(draft.trim());
-              } catch (e) {
-                setRowError(e instanceof Error ? e.message : String(e));
-              }
-              setBusy(false);
-            }}>
-            <ThemedText style={styles.answerButtonText}>{busy ? '…' : 'Envia'}</ThemedText>
-          </TouchableOpacity>
-        </View>
-      )}
-      {rowError && <ThemedText style={styles.error}>{rowError}</ThemedText>}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 16, gap: 12, paddingBottom: 48 },
@@ -262,24 +217,4 @@ const styles = StyleSheet.create({
   rationale: { fontSize: 15, lineHeight: 22 },
   muted: { opacity: 0.6, textAlign: 'center', marginTop: 8 },
   error: { color: '#d64541', textAlign: 'center' },
-  questionRow: { gap: 6 },
-  answerRow: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
-  answerInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: 'rgba(127,127,127,0.4)',
-    borderRadius: 10,
-    padding: 10,
-    fontSize: 14,
-    color: '#888',
-    minHeight: 40,
-  },
-  answerButton: {
-    backgroundColor: '#1D3D47',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  answerButtonText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  answerDone: { fontSize: 14, fontStyle: 'italic', color: '#2e9e5b' },
 });

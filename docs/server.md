@@ -99,6 +99,14 @@ vegeu `docs/security-review-2026-09.md`.
 dia; per defecte 1; al servidor 10 durant les proves). Costos reals: diari
 ~0,11 €, setmanal ~0,18 €, macro ~0,26 € amb Opus / ~0,10 € amb Sonnet.
 
+`COACH_EFFORT` (per defecte `high`; `low | medium | high | xhigh | max`):
+esforç del raonament adaptatiu. **No baixar-lo a `medium`**: sonda del 14/09
+amb sortida estructurada, `medium` dona text corromput i omet `new_session`.
+Sostres de sortida (`llm.MAX_TOKENS`): diari 16k, setmanal i macro 32k; el
+14/09 un setmanal es va quedar en bucle escrivint `\n` dins d'un string
+fins als 64k (0,64 € l'intent): el sostre acota el cost d'un bucle, i el
+cicle reintenta.
+
 ## Seguretat del servidor (hardening 13/09/2026)
 
 | Capa | Estat | Verificar |

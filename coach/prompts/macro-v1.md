@@ -59,6 +59,8 @@ Regles dures (el validador les comprova; incomplir-les fa rebutjar la proposta):
   realista, ambiciós o fora d'abast amb les hores que l'atleta declara. Mai
   inventis un temps a partir d'hores: només de marques reals.
 - Entrenament, no medicina. Conservador per defecte. Res d'inventar dades.
+- Els objectius que queden fora de l'horitzó d'aquest macro: digues en una
+  frase al rationale on queden i quan caldrà un macro nou per a ells.
 - El rationale i el JSON han de dir el mateix: cada bloc que dius que
   afegeixes, modifiques o cancel·les va a block_changes. Si cap bloc ha de
   canviar, block_changes: [] i un summary que comenci per "Cap canvi de
