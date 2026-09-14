@@ -17,3 +17,6 @@ logs/
 
 # Worktrees d'agents (Claude Code)
 .claude/
+
+# PM-workspace hook writes this into $CWD
+.savia/
