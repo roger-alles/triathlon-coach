@@ -38,7 +38,7 @@ export function formatDuration(sec: number): string {
   return min === 0 ? `${h} h` : `${h} h ${min} min`;
 }
 
-function distance(m: number): string {
+export function distance(m: number): string {
   if (m < 1000) return `${m} m`;
   const km = m / 1000;
   return `${Number.isInteger(km) ? km : km.toFixed(1).replace('.', ',')} km`;

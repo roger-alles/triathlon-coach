@@ -2,6 +2,22 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-09-14 — "Ho he fet" des de Setmana; el vincle explícit de l'atleta mana
+
+Tres natacions en una setmana registrades per xat perquè el botó només sortia a
+Avui, el mateix dia i per a sessions `planned`. Cas que ho va destapar: la
+sessió del 10/09 feta l'11 va quedar `missed` encara que la fila manual portava
+`plan_session_id`, perquè `ingest.link` només aparella pel mateix dia i
+ignorava aquell camp. Decisions: (1) una fila manual (`raw.manual`) amb
+`plan_session_id` és la paraula de l'atleta — compta per a aquella sessió sigui
+del dia que sigui, no passa per l'heurística de durada i no se li reescriu el
+vincle; (2) el botó surt a Setmana per a qualsevol sessió de dia passat o d'avui
+en `planned`/`partial`/`missed` sense activitat lligada, amb el dia editable;
+(3) un `multisport` es registra per trams (un per segment swim/bike/run, cada
+tram una activitat lligada a la mateixa sessió) i un `brick` com la cursa del
+brick; (4) l'id manual passa a `-AAAAMMDDhhmmss` perquè dos trams del mateix
+minut no xoquin. Sense migració: la RLS de la 0008 ja ho permet (`id < 0`).
+
 ## 2026-09-10 — S1a: aplicar amb seguretat (servidor), inert fins al 28/09
 
 Primer tall del disseny post-cursa, construït ABANS de la cursa perquè el
