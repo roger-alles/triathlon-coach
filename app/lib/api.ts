@@ -179,7 +179,9 @@ export async function getMacroAnswer(reportId: number): Promise<MacroAnswer | nu
   };
 }
 
-// Propostes obertes o acabades de resoldre (últims 7 dies), sense el keep.
+// Propostes que demanen l'atleta (últims 7 dies), sense el keep: les pendents
+// i les fallades. Les auto-aplicades només el dia que es creen (per si les vol
+// desfer); les que ell ja ha aplicat no tornen a sortir.
 // En dry_run no n'hi ha cap: tot queda a 'none'.
 export async function getOpenProposals(todayISO: string): Promise<Proposal[]> {
   const since = parseLocalISO(todayISO);
@@ -187,11 +189,14 @@ export async function getOpenProposals(todayISO: string): Promise<Proposal[]> {
   const { data, error } = await supabase
     .from('coach_report')
     .select(PROPOSAL_COLUMNS)
-    .in('proposal_status', ['proposed', 'auto_applied', 'applied', 'failed'])
+    .in('proposal_status', ['proposed', 'auto_applied', 'failed'])
     .gte('created_at', localDateISO(since))
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
-  return ((data ?? []) as Record<string, any>[]).map(proposalOf).filter((p): p is Proposal => p != null);
+  return ((data ?? []) as Record<string, any>[])
+    .filter((row) => row.proposal_status !== 'auto_applied' || localDateISO(new Date(row.created_at)) === todayISO)
+    .map(proposalOf)
+    .filter((p): p is Proposal => p != null);
 }
 
 export type SessionRef = { id: number; local_date: string; sport: string; title: string; status: string };

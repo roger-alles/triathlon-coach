@@ -64,8 +64,10 @@ export default function Avui() {
       setReport(r);
       setSessions(s);
       setApplyMode(mode ?? 'dry_run');
-      // la proposta de l'informe d'avui primer; després les obertes d'altres informes
-      const all = [...(r?.proposal ? [r.proposal] : []), ...open.filter((p) => p.id !== r?.proposal?.id)];
+      // la proposta de l'informe d'avui primer (si ell ja l'ha aplicada, no cal);
+      // després les obertes d'altres informes
+      const own = r?.proposal && r.proposal.status !== 'applied' ? [r.proposal] : [];
+      const all = [...own, ...open.filter((p) => p.id !== r?.proposal?.id)];
       setProposals(all);
       const ids = all.flatMap((p) => p.changes.flatMap((c) => (c.plan_session_id != null ? [c.plan_session_id] : [])));
       const needsBlocks = all.some((p) => (p.blockChanges ?? []).length > 0);
