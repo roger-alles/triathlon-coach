@@ -20,6 +20,13 @@ transacció:
 
 Una decisió que falla queda 'failed' amb el motiu; l'informe no canvia
 d'estat, així l'atleta pot tornar-ho a intentar o descartar.
+
+Peticions (athlete_request), després de les decisions:
+
+  regenerate_macro          un macro nou (Opus), MACRO_DAILY_LIMIT al dia.
+  free_text, scope 'week'   redisseny de la setmana `week_start` amb el text
+                            de l'atleta (pestanya Setmana): coach.run replan,
+                            s'aplica sol. REPLAN_DAILY_LIMIT al dia (3).
 """
 
 import json
@@ -35,9 +42,10 @@ from coach.blocks import apply_blocks_to_db, block_errors, undo_block_effects
 from coach.plan_loader import plan_from_db
 from coach.rules import primary_goal, validate_plan
 from coach.run import (StaleProposal, apply_changes, apply_to_db, blocking_signatures,
-                       run_report, semantic_errors)
+                       replan_window, run_replan, run_report, semantic_errors)
 
 ROOT = Path(__file__).parent.parent
+MAX_REQUEST_CHARS = 1000
 EFFECT_COLS = ("report_id", "kind", "session_id", "new_session_id",
                "prev_status", "prev_superseded_by", "block_id", "prev_values")
 
@@ -192,24 +200,74 @@ def process_decision(conn, decision: tuple, plan_loader=plan_from_db) -> str:
     return _fail(conn, decision_id, f"decisió desconeguda: {kind}")
 
 
-def _request_fail(conn, request_id: int, reason: str) -> str:
-    conn.execute("update athlete_request set status='failed', error=%s where id=%s",
-                 (reason, request_id))
+def _request_fail(conn, request_id: int, reason: str, report_id: int | None = None) -> str:
+    conn.execute("update athlete_request set status='failed', error=%s, report_id=%s "
+                 "where id=%s", (reason, report_id, request_id))
     return "failed"
 
 
-def process_request(conn, request: tuple, run_macro, daily_limit: int | None = None) -> str:
-    """Una petició de l'atleta: 'skipped' (ja reclamada), 'answered' o 'failed'.
-    Ara només regenerate_macro; la resta de tipus arriben amb la bústia (S5).
-    MACRO_DAILY_LIMIT (per defecte 1) limita els macros per dia: és la crida cara."""
-    request_id, kind, _payload = request
+def week_request(payload: dict, today: date) -> tuple[date, str] | str:
+    """(dilluns, text) d'una petició de redisseny, o el motiu per rebutjar-la."""
+    text = (payload.get("text") or "").strip()
+    if not text:
+        return "la petició no diu què vols canviar"
+    if len(text) > MAX_REQUEST_CHARS:
+        return f"la petició és massa llarga (màxim {MAX_REQUEST_CHARS} caràcters)"
+    try:
+        monday = date.fromisoformat(payload.get("week_start") or "")
+    except ValueError:
+        return "la petició no diu de quina setmana parla"
+    if monday.weekday() != 0:
+        return f"{monday} no és dilluns"
+    if replan_window(monday, today) is None:
+        return "aquesta setmana ja ha passat"
+    return monday, text
+
+
+def process_week_request(conn, request_id: int, payload: dict, run_week,
+                         today: date | None = None, daily_limit: int | None = None) -> str:
+    """Redisseny de la setmana. run_week(monday, text) -> run_cycle(...) dict."""
+    today = today or date.today()
     if daily_limit is None:
-        daily_limit = int(os.getenv("MACRO_DAILY_LIMIT", "1"))
+        daily_limit = int(os.getenv("REPLAN_DAILY_LIMIT", "3"))
+    parsed = week_request(payload, today)
+    if isinstance(parsed, str):
+        return _request_fail(conn, request_id, parsed)
+    n = conn.execute("""select count(*) from coach_report where report_type='replan'
+                        and created_at::date = current_date""").fetchone()
+    if n and n[0] >= daily_limit:
+        return _request_fail(conn, request_id, f"avui ja s'han fet {n[0]} redissenys (límit "
+                                                f"{daily_limit}); demà en pots demanar més")
+    out = run_week(*parsed)
+    if not out["accepted"]:
+        return _request_fail(conn, request_id, "el coach no ha trobat cap setmana que compleixi "
+                                               "les regles; el pla no ha canviat",
+                             out["report_id"])
+    if out["proposal_status"] == "failed":
+        return _request_fail(conn, request_id, "el pla ha canviat mentre el coach hi pensava; "
+                                               "torna-ho a demanar", out["report_id"])
+    conn.execute("update athlete_request set status='answered', report_id=%s where id=%s",
+                 (out["report_id"], request_id))
+    return "answered"
+
+
+def process_request(conn, request: tuple, run_macro, daily_limit: int | None = None,
+                    run_week=None) -> str:
+    """Una petició de l'atleta: 'skipped' (ja reclamada), 'answered' o 'failed'.
+    regenerate_macro i el redisseny de setmana (free_text amb scope 'week');
+    la resta de tipus arriben amb la bústia (S5).
+    MACRO_DAILY_LIMIT (per defecte 1) limita els macros per dia: és la crida cara."""
+    request_id, kind, payload = request
     claimed = conn.execute("""update athlete_request set status='processing'
                               where id=%s and status='pending' returning id""",
                            (request_id,)).fetchone()
     if claimed is None:
         return "skipped"
+    payload = payload or {}
+    if kind == "free_text" and payload.get("scope") == "week" and run_week is not None:
+        return process_week_request(conn, request_id, payload, run_week)
+    if daily_limit is None:
+        daily_limit = int(os.getenv("MACRO_DAILY_LIMIT", "1"))
     if kind != "regenerate_macro":
         return _request_fail(conn, request_id, f"petició '{kind}' encara no suportada")
     n = conn.execute("""select count(*) from coach_report where report_type='macro'
@@ -251,8 +309,11 @@ def main() -> None:
     for request in requests:
         try:
             with psycopg.connect(url) as conn:
-                outcome = process_request(conn, request,
-                                          run_macro=lambda: run_report("macro", url=url))
+                outcome = process_request(
+                    conn, request,
+                    run_macro=lambda: run_report("macro", url=url),
+                    run_week=lambda monday, text: run_replan(url=url, week_start=monday,
+                                                             request_text=text))
         except Exception as e:  # noqa: BLE001
             with psycopg.connect(url) as conn:
                 _request_fail(conn, request[0], f"error inesperat: {e}")

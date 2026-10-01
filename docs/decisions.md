@@ -2,6 +2,24 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-10-01 — La setmana no és una proposta: s'aplica i es redissenya a petició
+
+Amb la setmana rodant (S4b) el setmanal arribava a Avui com a proposta amb
+Aplica / Descarta, i un cop aplicada hi seguia 7 dies per tenir Desfés a mà.
+Però el setmanal escriu la setmana sencera (la del 28/09: 7 `add`, cap pla
+previ): descartar-la o desfer-la deixa l'atleta sense pla fins al diumenge
+següent, i el Desfés es nega igualment així que s'ha fet una sessió. Decidit
+amb en Roger: (1) en mode `hybrid`, el setmanal s'aplica sempre
+(`auto_applied`, la classificació es desa igualment); (2) a la pestanya
+Setmana, "Demana canvis": l'atleta escriu què vol i el coach redissenya d'avui
+a diumenge (`replan`, prompt `replan-v1`), també aplicat sol. Sense migració:
+`athlete_request.kind = 'free_text'` amb `payload.scope = 'week'` i
+`report_type = 'replan'` ja existien (bústia, S5). Guardes: el model només
+pot tocar els dies oberts (`window_errors`), les 15 regles validen la setmana
+sencera, les sessions fetes no es toquen (`_guard`) i `REPLAN_DAILY_LIMIT`
+(3) acota el cost (~0,18 € per redisseny). Avui ja no ensenya propostes
+aplicades per l'atleta; les auto-aplicades, només el dia que es creen.
+
 ## 2026-09-14 — Contracte v1.4: camps opcionals → obligatoris i nullables; esforç i sostres
 
 Assajant en sec el setmanal (S4b) han sortit tres coses, totes verificades

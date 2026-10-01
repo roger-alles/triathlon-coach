@@ -705,3 +705,85 @@ def test_a_cycle_cut_off_every_time_still_yields_a_writable_report():
     conn = DbConn({})
     write_report(conn, "weekly", {}, result, MON, proposal_status="none", scope="week")
     assert any("insert into coach_report" in sql for sql, _ in conn.calls)
+
+
+# ─── setmanal aplicat sempre i redisseny de setmana (replan) ─────────
+
+def _week_output(report_type, changes):
+    # el cicle real deixa structure parsejada (semantic_errors); el fals no
+    semantic_errors([c for c in changes if c["action"] == "add"], {}, ATHLETE)
+    return {"schema_version": "1.3", "report_type": report_type, "session_changes": changes,
+            "readiness": {"verdict": "green", "drivers": [], "confidence": "high"},
+            "summary": "s", "rationale": "r", "flags": [], "questions_for_athlete": []}
+
+
+def test_weekly_in_hybrid_is_applied_even_when_classify_would_make_it_a_proposal(monkeypatch):
+    calls = {}
+    # un add mai és automàtic per a classify: abans quedava 'proposed'
+    run = _run_report_harness(monkeypatch, calls, _week_output("weekly", [add_change(day_offset=2)]))
+    applied = []
+    monkeypatch.setattr(run, "apply_to_db", lambda conn, rid, changes, *a: applied.append(rid) or changes)
+    run.run_report("weekly", url="postgres://x", today=date(2026, 10, 4))
+    assert calls["write"]["proposal_status"] == "auto_applied"
+    assert calls["write"]["classification"]["auto"] is False   # es registra igualment
+    assert applied == [42]
+
+
+def test_daily_in_hybrid_still_leaves_a_non_auto_change_as_a_proposal(monkeypatch):
+    calls = {}
+    run = _run_report_harness(monkeypatch, calls, _week_output("daily", [add_change(day_offset=2)]))
+    run.run_report("daily", url="postgres://x", today=date(2026, 10, 4))
+    assert calls["write"]["proposal_status"] == "proposed"
+
+
+def test_replan_opens_today_to_sunday_carries_the_request_and_is_applied(monkeypatch):
+    calls = {}
+    run = _run_report_harness(monkeypatch, calls, _week_output("replan", [add_change(day_offset=4)]))
+    monkeypatch.setattr(run, "build_context",
+                        lambda conn, today, report_for=None, **kw: calls.update(ctx=(report_for, kw)) or {})
+    monkeypatch.setattr(run, "apply_to_db", lambda conn, rid, changes, *a: changes)
+    wednesday = MON + timedelta(days=2)
+    out = run.run_replan(url="postgres://x", week_start=MON, request_text="dijous no puc",
+                         today=wednesday)
+    window = (wednesday, MON + timedelta(days=6))
+    assert out == {"report_id": 42, "accepted": True, "proposal_status": "auto_applied"}
+    assert calls["prompts"] == ["replan-v1"]
+    assert calls["cycle"]["week"] == window and calls["cycle"]["report_type"] == "replan"
+    assert calls["ctx"] == (wednesday, {"replan_window": window, "request_text": "dijous no puc"})
+    assert calls["write"]["window"] == window and calls["write"]["scope"] == "week"
+
+
+def test_replan_window_is_the_rest_of_the_week_or_none_once_it_is_over():
+    from coach.run import replan_window
+    sunday = MON + timedelta(days=6)
+    assert replan_window(MON, MON - timedelta(days=1)) == (MON, sunday)      # setmana vinent: sencera
+    assert replan_window(MON, MON + timedelta(days=3)) == (MON + timedelta(days=3), sunday)
+    assert replan_window(MON, sunday) == (sunday, sunday)
+    assert replan_window(MON, sunday + timedelta(days=1)) is None
+
+
+def test_window_errors_keep_a_replan_inside_the_open_days():
+    from coach.run import window_errors
+    plan = {s.id: s for s in make_plan()}       # 1 dl, 2 dt, 3 dj, 4 ds
+    window = (MON + timedelta(days=2), MON + timedelta(days=6))
+    ok = [{"action": "cancel", "plan_session_id": 3, "reason": "no pot"},
+          {"action": "move", "plan_session_id": 4, "new_date": str(MON + timedelta(days=6))},
+          {"action": "keep", "plan_session_id": 2}]
+    assert window_errors(ok, plan, window) == []
+    past = [{"action": "modify", "plan_session_id": 2, "new_session": {}}]
+    assert "fora dels dies" in window_errors(past, plan, window)[0]
+    out_of_week = [{"action": "move", "plan_session_id": 3, "new_date": str(MON + timedelta(days=7))}]
+    assert "new_date" in window_errors(out_of_week, plan, window)[0]
+
+
+def test_a_replan_touching_a_closed_day_goes_back_to_the_model():
+    plan = make_plan()
+    window = (MON + timedelta(days=2), MON + timedelta(days=6))
+    bad = _week_output("replan", [{"action": "cancel", "plan_session_id": 2, "reason": "x"}])
+    good = _week_output("replan", [{"action": "keep", "plan_session_id": 3}])
+    llm = FakeLLM([bad, good])
+    result = coach_cycle(llm=llm, system="", context_json="{}", plan=plan, athlete=ATHLETE,
+                         history=History(), goals=[], today=window[0], report_type="replan",
+                         blocks=[_block()], week=window)
+    assert result["accepted"] and llm.calls == 2
+    assert "fora dels dies" in result["validation_errors"][0][0]

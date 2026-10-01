@@ -158,6 +158,58 @@ export async function getRequests(limit = 3): Promise<AthleteRequest[]> {
   return (data ?? []) as AthleteRequest[];
 }
 
+// Redisseny d'una setmana: l'atleta diu què vol canviar i el coach reescriu
+// d'avui a diumenge (coach.decisions → coach.run replan). S'aplica sol.
+export type WeekRequest = {
+  id: number;
+  status: AthleteRequest['status'];
+  error: string | null;
+  text: string;
+  createdAt: string;
+  summary: string | null; // què ha canviat el coach (si ha respost)
+  rationale: string | null;
+};
+
+export async function requestWeekRedesign(weekStartISO: string, text: string): Promise<void> {
+  await sendRequest('free_text', { scope: 'week', week_start: weekStartISO, text });
+}
+
+export async function getWeekRequest(weekStartISO: string): Promise<WeekRequest | null> {
+  const { data, error } = await supabase
+    .from('athlete_request')
+    .select('id, status, error, report_id, created_at, payload')
+    .eq('kind', 'free_text')
+    .eq('payload->>scope', 'week')
+    .eq('payload->>week_start', weekStartISO)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const row = data as Record<string, any>;
+  let summary: string | null = null;
+  let rationale: string | null = null;
+  if (row.report_id != null) {
+    const { data: rep, error: repError } = await supabase
+      .from('coach_report')
+      .select('output')
+      .eq('id', row.report_id)
+      .maybeSingle();
+    if (repError) throw new Error(repError.message);
+    summary = (rep as Record<string, any> | null)?.output?.summary ?? null;
+    rationale = (rep as Record<string, any> | null)?.output?.rationale ?? null;
+  }
+  return {
+    id: row.id,
+    status: row.status,
+    error: row.error,
+    text: row.payload?.text ?? '',
+    createdAt: row.created_at,
+    summary,
+    rationale,
+  };
+}
+
 export type MacroAnswer = { id: number; proposalStatus: string; summary: string; hasBlockChanges: boolean };
 
 // L'informe que ha respost una petició de macro: si no porta canvis de blocs

@@ -28,7 +28,7 @@ DEFAULT_MODEL = "claude-sonnet-5"
 # l'SDK exigeix streaming (no costa res si no s'usa).
 # 14/09: amb 64k, un setmanal es va quedar en bucle escrivint "\\n" dins d'un
 # string JSON fins al sostre (0,64 € l'intent); una setmana sencera són ~10k.
-MAX_TOKENS = {"daily": 16000, "weekly": 32000, "macro": 32000}
+MAX_TOKENS = {"daily": 16000, "weekly": 32000, "macro": 32000, "replan": 32000}
 STREAM_ABOVE = 16000
 
 

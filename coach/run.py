@@ -11,6 +11,11 @@
     .venv/bin/python -m coach.run daily [--dry-run]
     .venv/bin/python -m coach.run weekly [--dry-run]
 
+El setmanal i el redisseny d'una setmana ('replan', a petició de l'atleta des
+de la pestanya Setmana: coach.decisions) no són propostes: en mode hybrid
+s'apliquen sempre. Una setmana descartada deixaria l'atleta sense pla; si no
+li agrada, en demana un altre redisseny amb el que vol canviar.
+
 El mode d'aplicació es llegeix de la BD (app_setting.coach_apply_mode, que
 l'app pot canviar): 'dry_run' fa el cicle sencer (amb crida real a l'API)
 però no escriu res al pla; 'hybrid' aplica sol els canvis petits (coach/
@@ -52,7 +57,7 @@ from coach.structure import validate_structure
 ROOT = Path(__file__).parent.parent
 MAX_ATTEMPTS = 3  # 1 proposta + 2 correccions (spec §7 pas 4)
 MACRO_MODEL = "claude-opus-5"  # el macro és car i poc freqüent: el millor model
-PROMPT_VERSION = {"daily": "v1", "weekly": "v2", "macro": "v1"}
+PROMPT_VERSION = {"daily": "v1", "weekly": "v2", "macro": "v1", "replan": "v1"}
 
 NEW_SESSION_REQUIRED = ("sport", "session_type", "title", "structure_json")
 ADD_REQUIRED = NEW_SESSION_REQUIRED + ("local_date",)
@@ -168,6 +173,33 @@ def semantic_errors(changes: list[dict], plan_by_id: dict[int, Session],
     return errors
 
 
+def window_errors(changes: list[dict], plan_by_id: dict[int, Session],
+                  window: tuple[date, date]) -> list[str]:
+    """Un redisseny només toca els dies que l'atleta li ha obert (de la
+    finestra en endavant, dins de la setmana): ni el passat ni la setmana
+    del costat. Els add ja els vigila semantic_errors(week=...)."""
+    errors = []
+    for i, change in enumerate(changes):
+        action = change.get("action")
+        if action in ("add", "keep"):
+            continue
+        session = plan_by_id.get(change.get("plan_session_id"))
+        if session is None:
+            continue   # ja l'ha denunciat semantic_errors
+        if not window[0] <= session.local_date <= window[1]:
+            errors.append(f"session_changes[{i}]: la sessió {session.id} ({session.local_date}) "
+                          f"és fora dels dies que es redissenyen ({window[0]} – {window[1]})")
+        if action == "move" and change.get("new_date"):
+            try:
+                new_day = date.fromisoformat(change["new_date"])
+            except ValueError:
+                continue
+            if not window[0] <= new_day <= window[1]:
+                errors.append(f"session_changes[{i}]: new_date {new_day} és fora dels dies "
+                              f"que es redissenyen ({window[0]} – {window[1]})")
+    return errors
+
+
 def apply_changes(plan: list[Session], changes: list[dict],
                   blocks: list[Block] | None = None) -> list[Session]:
     """Pla candidat amb els canvis aplicats (en memòria; l'original no es toca).
@@ -277,7 +309,7 @@ def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
             if report_type == "macro":
                 hint = ("un macro porta session_changes: [] i NOMÉS block_changes; "
                         "rationale de 2500 caràcters com a molt")
-            elif report_type == "weekly":
+            elif report_type in ("weekly", "replan"):
                 hint = ("escriu només la setmana que toca amb add compactes (structure_json "
                         "curt), keep sense comentaris, rationale de 2500 caràcters com a molt")
             else:
@@ -294,6 +326,8 @@ def coach_cycle(llm, system: str, context_json: str, plan: list[Session],
         errors = _macro_shape_errors(output) if report_type == "macro" else []
         errors += semantic_errors(output["session_changes"], plan_by_id, athlete, blocks,
                                   week=week)
+        if report_type == "replan" and week is not None:
+            errors += window_errors(output["session_changes"], plan_by_id, week)
         cycle_blocks = blocks
         if block_changes:
             errors += block_errors(block_changes, blocks, goals, history, today, plan=active,
@@ -482,7 +516,8 @@ SUMMARY_PREFIX = {
 
 def write_report(conn, report_type: str, snapshot: dict, result: dict, today: date,
                  *, proposal_status: str, scope: str = "sessions",
-                 classification: dict | None = None, window_end: date | None = None) -> int:
+                 classification: dict | None = None, window_end: date | None = None,
+                 window: tuple[date, date] | None = None) -> int:
     """Desa l'informe i en retorna l'id (per lligar-hi efectes i decisions)."""
     output = result["output"]
     summary_md = f"## {output['summary']}\n\n{output['rationale']}"
@@ -492,7 +527,9 @@ def write_report(conn, report_type: str, snapshot: dict, result: dict, today: da
         summary_md = "## PROPOSTA DESCARTADA PEL VALIDADOR\n\n" + summary_md
     elif proposal_status in SUMMARY_PREFIX:
         summary_md = SUMMARY_PREFIX[proposal_status] + "\n\n" + summary_md
-    if report_type == "weekly":
+    if window is not None:
+        pass
+    elif report_type == "weekly":
         monday = _next_monday(today)
         window = (monday, monday + timedelta(days=6))
     elif report_type == "macro":
@@ -518,13 +555,42 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
                dry_run: bool = False, tomorrow: bool = False) -> int:
     """Un cicle sencer (context → model → validació → persistir). Retorna l'id
     de l'informe. Cridat per main (CLI) i per coach.decisions (peticions)."""
+    return run_cycle(report_type, url=url, today=today, dry_run=dry_run,
+                     tomorrow=tomorrow)["report_id"]
+
+
+def replan_window(week_start: date, today: date) -> tuple[date, date] | None:
+    """Els dies que un redisseny pot tocar: de la setmana demanada, d'avui en
+    endavant. None si la setmana ja ha passat sencera."""
+    end = week_start + timedelta(days=6)
+    if end < today:
+        return None
+    return (max(week_start, today), end)
+
+
+def run_replan(*, url: str, week_start: date, request_text: str,
+               today: date | None = None) -> dict:
+    """Redisseny de la setmana a petició de l'atleta (pestanya Setmana)."""
+    return run_cycle("replan", url=url, today=today, week_start=week_start,
+                     request_text=request_text)
+
+
+def run_cycle(report_type: str, *, url: str, today: date | None = None,
+              dry_run: bool = False, tomorrow: bool = False,
+              week_start: date | None = None, request_text: str | None = None) -> dict:
+    """run_report amb el detall: {"report_id", "accepted", "proposal_status"}."""
     today = today or date.today()
+    window = replan_window(week_start, today) if report_type == "replan" else None
+    if report_type == "replan" and window is None:
+        raise ValueError(f"la setmana del {week_start} ja ha passat")
     # el preview mira demà, però la validació "res al passat" segueix ancorada
     # al dia real: les sessions d'avui encara no són passat a les 21:30.
     # El setmanal (diumenge) parla de la setmana que comença demà: bloc i
     # finestra del dilluns vinent. El macro parla d'avui en endavant.
     if report_type == "weekly":
         target = _next_monday(today)
+    elif report_type == "replan":
+        target = window[0]
     else:
         target = today + timedelta(days=1) if tomorrow else today
 
@@ -539,8 +605,10 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
                             (today,)).rowcount
         if done:
             print(f"{done} objectiu(s) amb data passada donats per fets")
-        snapshot = build_context(conn, today, report_for=target)
-        if report_type in ("weekly", "macro"):
+        replan = ({"replan_window": window, "request_text": request_text}
+                  if report_type == "replan" else {})
+        snapshot = build_context(conn, today, report_for=target, **replan)
+        if report_type in ("weekly", "macro", "replan"):
             snapshot["mode"] = report_type
         elif tomorrow:
             snapshot["mode"] = "evening_preview"
@@ -548,7 +616,8 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
         mode = "dry_run" if dry_run else apply_mode(conn)
 
     model = os.getenv("COACH_MODEL_MACRO", MACRO_MODEL) if report_type == "macro" else None
-    week = (target, target + timedelta(days=6)) if report_type == "weekly" else None
+    week = ((target, target + timedelta(days=6)) if report_type == "weekly"
+            else window)
     result = coach_cycle(
         llm=CoachLLM(model=model),
         system=load_prompt(f"{report_type}-{PROMPT_VERSION[report_type]}"),
@@ -561,7 +630,7 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
     # mai s'aplica sol.
     classification = None
     proposal_status = "none"
-    scope = {"macro": "macro", "weekly": "week"}.get(report_type, "sessions")
+    scope = {"macro": "macro", "weekly": "week", "replan": "week"}.get(report_type, "sessions")
     if result["accepted"]:
         active = {s.id: s for s in plan if s.status not in ("cancelled", "moved")}
         classification = classify(result["output"]["session_changes"], active,
@@ -570,6 +639,9 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
                                   ).to_dict()
         if mode == "hybrid":
             proposal_status = "auto_applied" if classification["auto"] else "proposed"
+            if report_type in ("weekly", "replan"):
+                # la setmana és el pla, no una proposta: sense ella no n'hi ha
+                proposal_status = "auto_applied"
         if report_type == "macro":
             # un macro mai s'aplica sol; i sense canvis de blocs no és cap
             # proposta (res a aprovar): informe informatiu
@@ -586,7 +658,8 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
             with conn.transaction():
                 report_id = write_report(conn, report_type, snapshot, result, today,
                                          proposal_status=proposal_status, scope=scope,
-                                         classification=classification, window_end=window_end)
+                                         classification=classification, window_end=window_end,
+                                         window=window)
                 if proposal_status == "auto_applied":
                     applied = len(apply_to_db(conn, report_id,
                                               result["output"]["session_changes"]))
@@ -595,7 +668,8 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
             with conn.transaction():
                 report_id = write_report(conn, report_type, snapshot, result, today,
                                          proposal_status="failed", scope=scope,
-                                         classification=classification, window_end=window_end)
+                                         classification=classification, window_end=window_end,
+                                         window=window)
             proposal_status = "failed"
 
     output = result["output"]
@@ -620,7 +694,8 @@ def run_report(report_type: str, *, url: str, today: date | None = None,
             print(f"  - {q}")
     if output.get("flags"):
         print(f"\nFlags: {output['flags']}")
-    return report_id
+    return {"report_id": report_id, "accepted": result["accepted"],
+            "proposal_status": proposal_status}
 
 
 def main() -> None:

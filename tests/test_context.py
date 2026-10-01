@@ -262,3 +262,20 @@ def test_weekly_context_without_block_says_so():
     ctx = build_context(conn, date(2026, 9, 27), report_for=date(2026, 9, 28))
     assert ctx["week_to_write"]["sessions_planned"] == 4
     assert "block" not in ctx["week_to_write"]   # compact() treu els None
+
+
+def test_replan_context_opens_the_rest_of_the_week_and_carries_the_request():
+    from coach.context import build_context
+
+    wednesday = date(2026, 10, 7)
+    sunday = date(2026, 10, 11)
+    conn = _full_conn(**{"count(*) from plan_session": (("n",), [(3,)])})
+    ctx = build_context(conn, wednesday, report_for=wednesday,
+                        replan_window=(wednesday, sunday), request_text="dijous no puc")
+    assert ctx["athlete_request"] == {"text": "dijous no puc",
+                                      "days_open": {"from": "2026-10-07", "to": "2026-10-11"}}
+    assert ctx["week_to_write"]["monday"] == "2026-10-07"
+    assert ctx["week_to_write"]["sunday"] == "2026-10-11"
+    assert ctx["week_to_write"]["sessions_planned"] == 3
+    # sense petició, res d'això
+    assert "athlete_request" not in build_context(_full_conn(), wednesday)
