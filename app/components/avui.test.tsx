@@ -180,6 +180,13 @@ test("un informe amb canvis mostra la targeta de proposta; en mode prova, etique
   expect(getSessionsByIds).toHaveBeenCalledWith([1]);
 });
 
+test("la proposta de l'informe d'avui que ell ja ha aplicat no torna a sortir", async () => {
+  mockReport.mockResolvedValue({ ...report, proposal: { ...proposal, status: 'applied' } });
+  await renderAvui();
+  await screen.findByText('Rodatge suau en lloc de sèries.');
+  expect(screen.queryByText(/Proposta del coach/)).toBeNull();
+});
+
 test('un informe que ho manté tot no mostra cap targeta', async () => {
   await renderAvui();
   await screen.findByText('Rodatge suau en lloc de sèries.');

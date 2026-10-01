@@ -422,11 +422,27 @@ test('getOpenProposals: només estats oberts dels últims 7 dies, més recents p
   mockFrom.mockReturnValue(chain);
   const out = await getOpenProposals('2026-09-14');
   expect(mockFrom).toHaveBeenCalledWith('coach_report');
-  expect(chain.in).toHaveBeenCalledWith('proposal_status', ['proposed', 'auto_applied', 'applied', 'failed']);
+  expect(chain.in).toHaveBeenCalledWith('proposal_status', ['proposed', 'auto_applied', 'failed']);
   expect(chain.gte).toHaveBeenCalledWith('created_at', '2026-09-07');
   expect(chain.order).toHaveBeenCalledWith('created_at', { ascending: false });
   expect(out).toHaveLength(1);
   expect(out[0].changes).toHaveLength(2);
+});
+
+test("getOpenProposals: les auto-aplicades només el dia que es creen (hora local); les pendents i fallades, tota la finestra", async () => {
+  const { getOpenProposals } = require('./api');
+  const rows = [
+    { ...changesRow, id: 30, proposal_status: 'auto_applied', created_at: '2026-09-14T05:16:00Z' },
+    { ...changesRow, id: 29, proposal_status: 'auto_applied', created_at: '2026-09-13T19:31:00Z' },
+    { ...changesRow, id: 28, proposal_status: 'proposed', created_at: '2026-09-10T19:31:00Z' },
+    { ...changesRow, id: 27, proposal_status: 'failed', created_at: '2026-09-09T19:31:00Z' },
+  ];
+  const chain = chainResolving({ data: rows, error: null });
+  chain.in = jest.fn(() => chain);
+  chain.gte = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  const out = await getOpenProposals('2026-09-14');
+  expect(out.map((p: { id: number }) => p.id)).toEqual([30, 28, 27]);
 });
 
 test('getOpenProposals: un add sense plan_session_id es conserva amb dia i tipus; resum, raonament i preguntes viatgen', async () => {
