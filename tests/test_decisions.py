@@ -60,6 +60,8 @@ class Conn:
             rows = [(params[0],)] if getattr(self, "request_claimable", True) else []
         elif "from coach_report where report_type='macro'" in s:
             rows = [(getattr(self, "macro_today", 0),)]
+        elif "from coach_report where report_type='replan'" in s:
+            rows = [(getattr(self, "replan_today", 0),)]
         conn = self
         class R:
             def fetchone(self_inner):
@@ -237,3 +239,79 @@ def test_regenerate_macro_request_runs_the_macro_once_a_day():
     outcome = process_request(conn3, (7, "regenerate_macro", {}), run_macro=lambda: runs.append(3) or 100,
                               daily_limit=10)
     assert outcome == "answered" and runs == [1, 3]
+
+
+# ─── redisseny de la setmana (free_text, scope 'week') ───────────────
+
+MONDAY = date(2026, 10, 5)
+
+
+def _week_payload(**kw):
+    return {"scope": "week", "week_start": "2026-10-05", "text": "dijous no puc", **kw}
+
+
+def test_week_request_validates_text_and_week():
+    from coach.decisions import week_request
+    wed = date(2026, 10, 7)
+    assert week_request(_week_payload(), wed) == (MONDAY, "dijous no puc")
+    assert "què vols" in week_request(_week_payload(text="  "), wed)
+    assert "massa llarga" in week_request(_week_payload(text="x" * 1001), wed)
+    assert "dilluns" in week_request(_week_payload(week_start="2026-10-06"), wed)
+    assert "quina setmana" in week_request(_week_payload(week_start="dijous"), wed)
+    assert "ja ha passat" in week_request(_week_payload(), date(2026, 10, 12))
+
+
+def test_week_request_is_routed_redesigned_and_answered():
+    from coach.decisions import process_request
+    seen = []
+    conn = Conn(decision=(0, 0, ""))
+    run_week = lambda monday, text: seen.append((monday, text)) or {
+        "report_id": 70, "accepted": True, "proposal_status": "auto_applied"}
+    outcome = process_request(conn, (8, "free_text", _week_payload()), run_macro=None,
+                              run_week=run_week)
+    assert outcome == "answered" and seen == [(MONDAY, "dijous no puc")]
+    assert conn.sql("set status='answered', report_id=%s")[0][1] == (70, 8)
+
+
+def test_week_request_limit_is_three_a_day_and_configurable():
+    from coach.decisions import process_week_request
+    runs = []
+    run_week = lambda m, t: runs.append(1) or {"report_id": 1, "accepted": True,
+                                               "proposal_status": "auto_applied"}
+    conn = Conn(decision=(0, 0, ""))
+    conn.replan_today = 3
+    wed = date(2026, 10, 7)
+    assert process_week_request(conn, 9, _week_payload(), run_week, today=wed) == "failed"
+    assert runs == [] and "límit 3" in conn.sql("set status='failed'")[0][1][0]
+    conn = Conn(decision=(0, 0, ""))
+    conn.replan_today = 3
+    assert process_week_request(conn, 9, _week_payload(), run_week, today=wed,
+                                daily_limit=5) == "answered"
+
+
+def test_week_request_rejected_by_the_validator_fails_but_keeps_the_report():
+    from coach.decisions import process_week_request
+    conn = Conn(decision=(0, 0, ""))
+    out = process_week_request(conn, 9, _week_payload(), today=date(2026, 10, 7),
+                               run_week=lambda m, t: {"report_id": 71, "accepted": False,
+                                                      "proposal_status": "none"})
+    assert out == "failed"
+    reason, report_id, request_id = conn.sql("set status='failed'")[0][1]
+    assert "no ha canviat" in reason and report_id == 71 and request_id == 9
+
+
+def test_week_request_that_went_stale_asks_to_try_again():
+    from coach.decisions import process_week_request
+    conn = Conn(decision=(0, 0, ""))
+    out = process_week_request(conn, 9, _week_payload(), today=date(2026, 10, 7),
+                               run_week=lambda m, t: {"report_id": 72, "accepted": True,
+                                                      "proposal_status": "failed"})
+    assert out == "failed" and "torna-ho a demanar" in conn.sql("set status='failed'")[0][1][0]
+
+
+def test_invalid_week_request_never_calls_the_model():
+    from coach.decisions import process_week_request
+    conn = Conn(decision=(0, 0, ""))
+    out = process_week_request(conn, 9, _week_payload(text=""), today=date(2026, 10, 7),
+                               run_week=lambda m, t: pytest.fail("no s'havia de cridar"))
+    assert out == "failed"

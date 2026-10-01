@@ -97,10 +97,11 @@ def block_for(conn, day: date) -> dict | None:
             "fallback": r[5], "intent": r[6], "return_from_layoff": r[7]}
 
 
-def _week_to_write(conn, monday: date) -> dict:
+def _week_to_write(conn, monday: date, sunday: date | None = None) -> dict:
     """La setmana que el setmanal ha d'escriure o ajustar: quantes sessions
-    vives ja té i dins de quin bloc cau (S4b)."""
-    sunday = monday + timedelta(days=6)
+    vives ja té i dins de quin bloc cau (S4b). Un redisseny passa els dies
+    que pot tocar (d'avui a diumenge) com a monday/sunday."""
+    sunday = sunday or monday + timedelta(days=6)
     n = conn.execute("""select count(*) from plan_session
                         where local_date between %s and %s
                           and status = 'planned' and superseded_by is null""",
@@ -225,7 +226,9 @@ def _past_compliance(conn, today: date) -> dict:
 
 
 def build_context(conn, today: date | None = None,
-                  report_for: date | None = None) -> dict:
+                  report_for: date | None = None,
+                  replan_window: tuple[date, date] | None = None,
+                  request_text: str | None = None) -> dict:
     """El snapshot complet que rep el model (spec §7, pas 1).
 
     `today` és SEMPRE el dia real (ancora totes les finestres de dades).
@@ -233,6 +236,9 @@ def build_context(conn, today: date | None = None,
     mateix `today` (informe del matí). Al preview del vespre, `report_for`
     és demà i "mode" passa a "evening_preview"; `_plan_ahead` inclou igualment
     des d'avui, perquè el vespre vegi la sessió d'avui i la de demà.
+
+    Un redisseny (`replan_window`, `request_text`) porta els dies que pot
+    tocar a `week_to_write` i el que l'atleta ha demanat a `athlete_request`.
     """
     today = today or date.today()
     report_for = report_for or today
@@ -246,8 +252,13 @@ def build_context(conn, today: date | None = None,
         "goals": _goals(conn, today),
         "current_block": block_for(conn, report_for),
         # el setmanal: la setmana del dilluns vinent, per escriure-la o ajustar-la
-        "week_to_write": (_week_to_write(conn, report_for)
+        "week_to_write": (_week_to_write(conn, *replan_window) if replan_window
+                          else _week_to_write(conn, report_for)
                           if report_for > today and report_for.weekday() == 0 else None),
+        "athlete_request": ({"text": request_text,
+                             "days_open": {"from": replan_window[0].isoformat(),
+                                           "to": replan_window[1].isoformat()}}
+                            if replan_window else None),
         "macro": _macro(conn),
         "history_weekly_hours": _history_weeks(conn, today),
         "activities_last_28d": queries.recent_activities(conn, RECENT_DAYS),

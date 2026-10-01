@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import LogSession from '@/components/log-session';
+import WeekRequestBox from '@/components/week-request';
 import { ThemedText } from '@/components/themed-text';
 import {
   Activity,
@@ -128,6 +129,9 @@ export default function Setmana() {
       </View>
 
       {error && <ThemedText style={styles.error}>{error}</ThemedText>}
+
+      {/* una setmana ja passada no es pot redissenyar */}
+      {days[6] >= today && <WeekRequestBox weekStart={days[0]} onApplied={load} />}
 
       {loading && (
         <View style={styles.center}>

@@ -5,6 +5,8 @@ jest.mock('@/lib/api', () => ({
   getActivitiesForRange: jest.fn(),
   getBlockForRange: jest.fn(),
   logManualActivity: jest.fn(),
+  getWeekRequest: jest.fn(),
+  requestWeekRedesign: jest.fn(),
   localDateISO: () => '2026-08-29',
 }));
 
@@ -13,7 +15,7 @@ jest.mock('expo-router', () => ({ router: { push: (...a: unknown[]) => mockPush(
 
 import { render, screen, userEvent } from '@testing-library/react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { getActivitiesForRange, getBlockForRange, getSessionsForRange, logManualActivity } from '@/lib/api';
+import { getActivitiesForRange, getBlockForRange, getSessionsForRange, getWeekRequest, logManualActivity } from '@/lib/api';
 import Setmana from './setmana';
 
 const mockSessions = getSessionsForRange as jest.Mock;
@@ -33,6 +35,7 @@ const renderSetmana = () =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (getWeekRequest as jest.Mock).mockResolvedValue(null);
   mockSessions.mockResolvedValue([
     { id: 23, local_date: '2026-08-27', sport: 'bike', title: 'Rodatge ondulat',
       status: 'completed', duration_sec_target: 4500, priority: 'support' },
@@ -204,4 +207,14 @@ test('registrar des de Setmana envia el dia de la sessió i recarrega la setmana
   await screen.findByText(/Registrada/);
   expect((logManualActivity as jest.Mock).mock.calls[0][0]).toMatchObject({ local_date: '2026-08-27', plan_session_id: 24 });
   expect(mockSessions).toHaveBeenCalledTimes(2);
+});
+
+test('la setmana actual porta la caixa de Demana canvis; una de passada, no', async () => {
+  await renderSetmana();
+  expect(await screen.findByText('Demana canvis a la setmana')).toBeOnTheScreen();
+  expect(getWeekRequest).toHaveBeenCalledWith('2026-08-24');
+  const user = userEvent.setup();
+  await user.press(screen.getByLabelText('Setmana anterior'));
+  await screen.findByText(/Dilluns 17/);
+  expect(screen.queryByText('Demana canvis a la setmana')).toBeNull();
 });

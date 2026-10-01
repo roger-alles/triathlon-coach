@@ -96,8 +96,17 @@ vegeu `docs/security-review-2026-09.md`.
 `.env`: `COACH_MODEL` (diari i setmanal; per defecte `claude-sonnet-5`),
 `COACH_MODEL_MACRO` (macro; per defecte `claude-opus-5`; al servidor ara
 `claude-sonnet-5` mentre es fan proves) i `MACRO_DAILY_LIMIT` (macros per
-dia; per defecte 1; al servidor 10 durant les proves). Costos reals: diari
-~0,11 €, setmanal ~0,18 €, macro ~0,26 € amb Opus / ~0,10 € amb Sonnet.
+dia; per defecte 1; al servidor 10 durant les proves). `REPLAN_DAILY_LIMIT`:
+redissenys de setmana demanats des de l'app per dia (per defecte 3). Costos
+reals: diari ~0,11 €, setmanal ~0,18 € (un redisseny, semblant), macro
+~0,26 € amb Opus / ~0,10 € amb Sonnet.
+
+Des del 01/10 el coach passa per OpenRouter (API compatible amb Anthropic):
+`ANTHROPIC_BASE_URL=https://openrouter.ai/api`, `ANTHROPIC_AUTH_TOKEN` (clau
+`sk-or-…`), models amb prefix (`anthropic/claude-sonnet-5`). La clau directa
+d'Anthropic queda comentada; còpia del `.env` anterior a `.env.bak-anthropic-*`.
+Els tokens d'entrada que registra `coach_report` no són fiables per aquesta via:
+el cost real és al panell d'OpenRouter.
 
 `COACH_EFFORT` (per defecte `high`; `low | medium | high | xhigh | max`):
 esforç del raonament adaptatiu. **No baixar-lo a `medium`**: sonda del 14/09
