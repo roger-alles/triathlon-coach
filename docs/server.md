@@ -179,6 +179,13 @@ Per què això i no TestFlight: en Roger prefereix seguir amb Expo Go de moment
 (canvis visibles a l'acte sense compilar). Limitacions: cada SDK nou d'Expo Go
 trenca l'app fins que es puja; sense notificacions push.
 
+**Caigudes per peticions web (arreglat 02/10)**: des del 20/09 com a mínim,
+8-25 reinicis al dia. Robots que escanegen el port 8081 hi feien peticions de
+navegador; Expo renderitzava la versió web, el client de Supabase demanava
+`window` (que a Node no existeix) i el procés queia (`status=7/NOTRUNNING`).
+Ara `app.json` porta `"platforms": ["ios", "android"]`: el servidor ja no
+prepara mai la web. Comprovar: `journalctl -u expo-dev --since today | grep -c "Main process exited"`.
+
 **Risc conegut (revisió 10/09)**: el port 8081 és HTTP obert a tot Internet.
 El login d'Expo Go 57 protegeix l'app dins d'Expo Go, NO el port: qualsevol
 pot descarregar el paquet JavaScript (amb la URL i la clau *publicable* de
