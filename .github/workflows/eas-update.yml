@@ -1,0 +1,35 @@
+# Envia els canvis de l'app (JavaScript) a l'app de TestFlight amb EAS Update
+# cada vegada que arriben a main. Només arriben a les builds amb el mateix
+# codi natiu (runtimeVersion: fingerprint); si un canvi toca dependències
+# natives, cal una build nova (eas build) i aquest pas no la substitueix.
+name: EAS Update
+
+on:
+  push:
+    branches: [main]
+    paths: ['app/**']
+  workflow_dispatch:
+
+concurrency:
+  group: eas-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: npm ci --no-audit --no-fund
+      - run: eas update --channel production --environment production --auto --non-interactive
