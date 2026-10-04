@@ -98,6 +98,25 @@ def test_taper_and_recovery_around_the_A_race_are_checked():
     assert any("recovery" in e for e in block_errors([], BLOCKS, [FORNELLS], REAL, TODAY))
 
 
+def test_after_a_recovery_the_ramp_starts_from_the_real_hours_not_the_recovery():
+    # recuperació de 3 h; les últimes 4 setmanes reals fan 5,08 h de mitjana
+    rec_end = RACE + timedelta(days=21)
+    def after(hours):
+        return [recovery(), add("base", rec_end + timedelta(days=1), rec_end + timedelta(days=28), hours)]
+    # 5,8 h: +14% sobre 5,08 h reals (abans: +93% sobre les 3 h de la recuperació)
+    assert block_errors(after(5.8), BLOCKS, [FORNELLS], REAL, TODAY) == []
+    errs = block_errors(after(6.0), BLOCKS, [FORNELLS], REAL, TODAY)
+    assert any("hores reals" in e and "15%" in e for e in errs)
+    # si les hores reals són més baixes que la recuperació, mana la recuperació
+    low = History(weekly_hours={TODAY - timedelta(weeks=i): 2.0 for i in range(1, 5)})
+    assert block_errors(after(3.4), BLOCKS, [FORNELLS], low, TODAY) == []
+    assert any("'Recuperació'" in e for e in block_errors(after(3.6), BLOCKS, [FORNELLS], low, TODAY))
+    # entre dos blocs de càrrega, res canvia: +15% sobre l'anterior
+    base = add("base", rec_end + timedelta(days=1), rec_end + timedelta(days=28), 5.0)
+    build = add("build", rec_end + timedelta(days=29), rec_end + timedelta(days=56), 6.0)
+    assert any("+20%" in e for e in block_errors([recovery(), base, build], BLOCKS, [FORNELLS], REAL, TODAY))
+
+
 def test_ramp_between_blocks_and_against_real_hours():
     # després de la recuperació (3 h), un base a 6 h és +100%: error
     steep = [recovery(), add("base", RACE + timedelta(days=22), RACE + timedelta(days=42), 6.0)]

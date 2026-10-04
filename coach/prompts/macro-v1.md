@@ -43,7 +43,10 @@ Regles dures (el validador les comprova; incomplir-les fa rebutjar la proposta):
   amb menys hores que el taper.
 - Hores: cada bloc com a molt un 15% per sobre de l'anterior; el primer bloc
   nou com a molt un 15% per sobre de la mitjana REAL de les últimes 4
-  setmanes (history_weekly_hours), no de la planificada. Mai per sobre
+  setmanes (history_weekly_hours), no de la planificada. Després d'un bloc
+  recovery o taper, el +15% es compta sobre el més alt entre aquell bloc i la
+  mitjana REAL de les últimes 4 setmanes: la recuperació no és el punt de
+  partida de la temporada. Mai per sobre
   d'athlete.constraints.weekly_hours_ceiling (el validador ho rebutja); el
   dia de descans fix (fixed_rest_day) i els dies disponibles
   (available_days) condicionen quantes sessions hi caben.
