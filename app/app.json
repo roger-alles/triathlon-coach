@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "app",
-    "slug": "app",
+    "name": "Entrenador",
+    "slug": "entrenador",
     "version": "1.0.0",
     "orientation": "portrait",
     "platforms": [
@@ -12,7 +12,11 @@
     "scheme": "app",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "cat.rogeralles.entrenador",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +25,8 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "cat.rogeralles.entrenador"
     },
     "web": {
       "output": "static",
@@ -49,6 +54,19 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "4f33085d-ca59-4250-9ffc-ea694bf1e693"
+      }
+    },
+    "owner": "rogeralles",
+    "updates": {
+      "url": "https://u.expo.dev/4f33085d-ca59-4250-9ffc-ea694bf1e693"
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
     }
   }
 }
