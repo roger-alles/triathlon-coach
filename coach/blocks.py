@@ -156,10 +156,18 @@ def block_errors(changes: list[dict], blocks: list[Block], goals: list[Goal],
                     errors.append(f"'{b.name}' ({b.phase}) ha de baixar hores respecte a "
                                   f"'{prev.name}' ({prev.target_weekly_hours} h)")
             else:
-                ramp = b.target_weekly_hours / prev.target_weekly_hours - 1
+                # Després d'una recuperació o una afinada (baixes a propòsit), la
+                # referència és el que l'atleta fa de debò, si és més alt: si no,
+                # la recuperació arrossegaria tota la temporada cap avall (macro
+                # del 04/10: 3,4 h de sortida amb 4,1 h reals).
+                ref, ref_name = prev.target_weekly_hours, f"'{prev.name}'"
+                if prev.phase in LOWERING_PHASES and real and statistics.mean(real) > ref:
+                    ref = statistics.mean(real)
+                    ref_name = "les hores reals de les últimes setmanes"
+                ramp = b.target_weekly_hours / ref - 1
                 if ramp > MAX_BLOCK_RAMP - 1:
                     errors.append(f"'{b.name}': {b.target_weekly_hours} h és +{round(ramp*100)}% "
-                                  f"sobre '{prev.name}' ({prev.target_weekly_hours} h); màxim +15%")
+                                  f"sobre {ref_name} ({round(ref, 1)} h); màxim +15%")
         elif not first_new_checked and real and b.phase not in LOWERING_PHASES:
             mean = statistics.mean(real)
             if b.target_weekly_hours > MAX_BLOCK_RAMP * mean:
