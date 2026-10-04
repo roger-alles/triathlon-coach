@@ -30,6 +30,11 @@ Vincle explícit: una fila manual (raw.manual = true, registrada des de l'app
 o a mà) que ja porta plan_session_id és la paraula de l'atleta — s'associa a
 aquella sessió encara que sigui d'un altre dia (sessió del dimecres feta el
 dijous), no passa per `match_day` i el seu plan_session_id no es reescriu.
+El mateix val per a qualsevol activitat amb `linked_by_athlete` (l'atleta l'ha
+assignada des del detall de l'activitat, també les de Garmin): amb
+plan_session_id compta per a aquella sessió, sigui del dia que sigui; amb
+plan_session_id null és "fora de pla" i ja no s'aparella sola. És una columna
+i no un camp de `raw` perquè el sync de Garmin reescriu `raw` sencer.
 
 Només es toquen estats gestionats per aquest procés (planned/completed/
 partial/missed): 'moved' i 'cancelled' són decisions del coach o de l'atleta
@@ -135,7 +140,11 @@ def session_status(session: dict, linked: list[dict], today: date) -> str | None
         else:
             return "completed"
         return "completed" if real >= COMPLETED_RATIO * target else "partial"
-    return "missed" if day_over else None
+    if day_over:
+        return "missed"
+    # avui o més endavant, sense activitat: si n'ha perdut una (l'atleta l'ha
+    # assignada a una altra sessió o l'ha esborrada), torna a estar pendent
+    return "planned" if session.get("status") in ("completed", "partial") else None
 
 
 def run_linking(conn, today: date | None = None) -> dict:
@@ -149,10 +158,12 @@ def run_linking(conn, today: date | None = None) -> dict:
                     where superseded_by is null and status = any(%s)""",
                     (list(MANAGED_STATUSES),))]
     activities = [dict(zip(("id", "local_date", "sport", "duration_sec",
-                            "distance_m", "load", "plan_session_id", "manual"), r))
+                            "distance_m", "load", "plan_session_id", "manual",
+                            "linked_by_athlete"), r))
                   for r in conn.execute("""
                     select id, local_date, sport, duration_sec, distance_m, load,
-                           plan_session_id, coalesce((raw->>'manual')::boolean, false)
+                           plan_session_id, coalesce((raw->>'manual')::boolean, false),
+                           linked_by_athlete
                     from activity""")]
 
     by_day_sessions: dict[date, list[dict]] = {}
@@ -164,11 +175,13 @@ def run_linking(conn, today: date | None = None) -> dict:
 
     # Vincles explícits de l'atleta: fora de l'heurística, valen per a qualsevol dia.
     session_ids = {s["id"] for s in sessions}
+    # (valor None: l'atleta l'ha marcada fora de pla)
     explicit = {a["id"]: a["plan_session_id"] for a in activities
-                if a.get("manual") and a.get("plan_session_id") in session_ids}
+                if a.get("linked_by_athlete")
+                or (a.get("manual") and a.get("plan_session_id") in session_ids)}
     linked_by_session: dict[int, list[dict]] = {}
     for a in activities:
-        if a["id"] in explicit:
+        if explicit.get(a["id"]) is not None:
             linked_by_session.setdefault(explicit[a["id"]], []).append(a)
 
     n_links = 0
@@ -184,8 +197,11 @@ def run_linking(conn, today: date | None = None) -> dict:
         matched_ids = {act_id for act_id, _ in match_day(day_sessions, free_acts)} | set(explicit)
         for s in day_sessions:
             if s["sport"] in ("brick", "multisport"):
+                # les del dia compten, menys les que l'atleta ha enviat a una
+                # altra sessió o fora de pla
+                composite = [a for a in day_acts if explicit.get(a["id"], s["id"]) == s["id"]]
                 own = [a for a in linked_by_session.get(s["id"], []) if a["id"] not in {d["id"] for d in day_acts}]
-                linked_by_session[s["id"]] = day_acts + own
+                linked_by_session[s["id"]] = composite + own
             if s["sport"] == "brick":
                 run_id = brick_run_link(s, day_acts, matched_ids)
                 if run_id is not None:
@@ -199,7 +215,7 @@ def run_linking(conn, today: date | None = None) -> dict:
         if new_status and new_status != s["status"]:
             conn.execute("update plan_session set status = %s where id = %s",
                          (new_status, s["id"]))
-            changes[new_status] += 1
+            changes[new_status] = changes.get(new_status, 0) + 1
     return {"links": n_links, **changes}
 
 

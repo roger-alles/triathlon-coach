@@ -337,6 +337,7 @@ export type ActivityDetail = Activity & {
   perceived_effort: number | null;
   feeling: number | null;
   athlete_notes: string | null;
+  linked_by_athlete: boolean;
 };
 
 export type SubjectiveUpdate = {
@@ -349,7 +350,7 @@ export async function getActivity(id: number): Promise<ActivityDetail | null> {
   const { data, error } = await supabase
     .from('activity')
     .select(
-      'id, local_date, sport, duration_sec, distance_m, avg_hr, max_hr, avg_pace_sec_km, avg_pace_sec_100m, elevation_gain_m, load, perceived_effort, feeling, athlete_notes, plan_session_id'
+      'id, local_date, sport, duration_sec, distance_m, avg_hr, max_hr, avg_pace_sec_km, avg_pace_sec_100m, elevation_gain_m, load, perceived_effort, feeling, athlete_notes, plan_session_id, linked_by_athlete'
     )
     .eq('id', id)
     .maybeSingle();
@@ -359,6 +360,49 @@ export async function getActivity(id: number): Promise<ActivityDetail | null> {
 
 export async function updateActivitySubjective(id: number, changes: SubjectiveUpdate): Promise<void> {
   const { error } = await supabase.from('activity').update(changes).eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+// Correccions de l'atleta (dies intercanviats, "Ho he fet" per error). El
+// vinculador (ingest/link.py, sync horari) respecta linked_by_athlete i
+// recalcula l'estat de les sessions.
+export const ASSIGN_WINDOW_DAYS = 3;
+const ASSIGNABLE_STATUSES = new Set(['planned', 'completed', 'partial', 'missed']);
+// un tram de bici, natació o cursa també pot ser part d'un brick o d'un simulacre
+const COMPOSITE_SPORTS = new Set(['brick', 'multisport']);
+const LEG_SPORTS = new Set(['swim', 'bike', 'run']);
+
+export const isManualActivity = (id: number) => id < 0;
+
+export async function getAssignableSessions(
+  sport: string,
+  dateISO: string
+): Promise<(PlanSession & { local_date: string })[]> {
+  const from = parseLocalISO(dateISO);
+  from.setDate(from.getDate() - ASSIGN_WINDOW_DAYS);
+  const to = parseLocalISO(dateISO);
+  to.setDate(to.getDate() + ASSIGN_WINDOW_DAYS);
+  const sessions = await getSessionsForRange(localDateISO(from), localDateISO(to));
+  return sessions.filter(
+    (s) =>
+      ASSIGNABLE_STATUSES.has(s.status) &&
+      (s.sport === sport || (LEG_SPORTS.has(sport) && COMPOSITE_SPORTS.has(s.sport)))
+  );
+}
+
+// planSessionId null: "fora de pla" per decisió de l'atleta (ja no s'aparella sola)
+export async function assignActivity(id: number, planSessionId: number | null): Promise<void> {
+  const { error } = await supabase
+    .from('activity')
+    .update({ plan_session_id: planSessionId, linked_by_athlete: true })
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+// Només entrades manuals (id < 0): la BD tampoc deixa esborrar les de Garmin.
+export async function deleteManualActivity(id: number): Promise<void> {
+  if (!isManualActivity(id)) throw new Error("Només es poden esborrar les entrades manuals");
+  const { error } = await supabase.from('activity').delete().eq('id', id).lt('id', 0);
   if (error) throw new Error(error.message);
 }
 
