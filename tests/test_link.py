@@ -164,7 +164,7 @@ class FakeConn:
         elif "from activity" in sql:
             rows = [(a["id"], a["local_date"], a["sport"], a["duration_sec"],
                      a["distance_m"], a["load"], a.get("plan_session_id"),
-                     a.get("manual", False))
+                     a.get("manual", False), a.get("linked_by_athlete", False))
                     for a in self._activities]
         else:
             self.updates.append((sql.split()[1], params))
@@ -176,9 +176,9 @@ def dbsess(status="planned", **kw):
     return {**sess(**kw), "status": status}
 
 
-def dbact(local_date, plan_session_id=None, manual=False, **kw):
-    return {**act(**kw), "local_date": local_date,
-            "plan_session_id": plan_session_id, "manual": manual}
+def dbact(local_date, plan_session_id=None, manual=False, linked_by_athlete=False, **kw):
+    return {**act(**kw), "local_date": local_date, "plan_session_id": plan_session_id,
+            "manual": manual, "linked_by_athlete": linked_by_athlete}
 
 
 def test_manual_amb_sessio_explicita_compta_encara_que_sigui_d_un_altre_dia():
@@ -234,3 +234,58 @@ def test_multisport_compta_un_tram_manual_registrat_un_altre_dia():
     # 3 esports, 5838 s >= 80% de 7200 -> completed (sense la natació seria partial)
     assert r["completed"] == 1
     assert ("plan_session", ("completed", 45)) in conn.updates
+
+
+# --- l'atleta corregeix des de l'app (linked_by_athlete) ---------------------
+
+def test_dies_intercanviats_cada_activitat_de_garmin_compta_per_la_sessio_triada():
+    from ingest.link import run_linking
+    sat, sun = date(2026, 10, 3), date(2026, 10, 4)
+    run_sess = dbsess(id=82, sport="run", local_date=sat, target=1200, status="missed")
+    bike_sess = dbsess(id=83, sport="bike", local_date=sun, target=1800, status="missed")
+    bike = dbact(sat, id=24594273597, sport="bike", dur=3601, plan_session_id=83, linked_by_athlete=True)
+    run = dbact(sun, id=24598098311, sport="run", dur=3219, plan_session_id=82, linked_by_athlete=True)
+    conn = FakeConn([run_sess, bike_sess], [bike, run])
+    r = run_linking(conn, today=date(2026, 10, 5))
+    assert r == {"links": 0, "completed": 2, "partial": 0, "missed": 0}
+    assert ("plan_session", ("completed", 82)) in conn.updates
+    assert ("plan_session", ("completed", 83)) in conn.updates
+    assert not any(t == "activity" for t, _ in conn.updates)   # no es reescriu el vincle
+
+
+def test_fora_de_pla_per_decisio_de_l_atleta_no_s_aparella_sola():
+    from ingest.link import run_linking
+    day = date(2026, 10, 3)
+    s = dbsess(id=5, sport="bike", local_date=day, target=3600)
+    a = dbact(day, id=100, sport="bike", dur=3600, linked_by_athlete=True)   # plan_session_id null
+    conn = FakeConn([s], [a])
+    r = run_linking(conn, today=date(2026, 10, 5))
+    assert r["links"] == 0 and r["missed"] == 1
+
+
+def test_una_sessio_d_avui_que_perd_la_seva_activitat_torna_a_pendent():
+    from ingest.link import run_linking
+    today = date(2026, 10, 4)
+    s = dbsess(id=83, sport="bike", local_date=today, target=1800, status="completed")
+    conn = FakeConn([s], [])    # l'activitat s'ha esborrat o s'ha assignat a una altra
+    r = run_linking(conn, today=today)
+    assert ("plan_session", ("planned", 83)) in conn.updates
+    # i una de passada, missed
+    s_past = dbsess(id=82, sport="run", local_date=date(2026, 10, 3), target=1200, status="completed")
+    conn = FakeConn([s_past], [])
+    run_linking(conn, today=today)
+    assert ("plan_session", ("missed", 82)) in conn.updates
+
+
+def test_un_multisport_no_compta_una_activitat_del_dia_que_l_atleta_ha_enviat_a_una_altra_sessio():
+    from ingest.link import run_linking
+    day = date(2026, 9, 12)
+    multi = dbsess(id=45, sport="multisport", local_date=day, target=7200)
+    bike = dbact(day, id=1, sport="bike", dur=4031)
+    run = dbact(day, id=2, sport="run", dur=3000, plan_session_id=99, linked_by_athlete=True)
+    other = dbsess(id=99, sport="run", local_date=date(2026, 9, 13), target=3000)
+    conn = FakeConn([multi, other], [bike, run])
+    run_linking(conn, today=date(2026, 9, 14))
+    # sense la cursa, el multisport només té bici -> partial; la cursa completa la 99
+    assert ("plan_session", ("partial", 45)) in conn.updates
+    assert ("plan_session", ("completed", 99)) in conn.updates

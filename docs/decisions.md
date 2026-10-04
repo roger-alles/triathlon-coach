@@ -2,6 +2,23 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-10-04 — L'atleta corregeix activitats: assignar a una sessió i esborrar manuals
+
+El cap de setmana del 3-4/10 en Roger va intercanviar dies (bici dissabte,
+cursa diumenge) i, a més, va registrar amb "Ho he fet" una cursa que no havia
+fet. Resultat: dues sessions sense la seva activitat, dues activitats de
+Garmin "fora de pla" i una entrada manual falsa sumant càrrega. L'app no
+deixava arreglar-ho: el vinculador només respectava vincles explícits de files
+manuals, i les de Garmin s'aparellaven per dia i esport. Ara, al detall de
+qualsevol activitat: "Sessió del pla" (sessions del mateix esport, o brick/
+multisport per a un tram, a ±3 dies, o "Fora de pla") i, per a les manuals,
+"Esborra". Nova columna `activity.linked_by_athlete` (migració 0014) en lloc
+d'un camp de `raw`, perquè el sync de Garmin reescriu `raw` sencer; el
+vinculador la tracta com a vincle explícit (també amb `plan_session_id` null:
+fora de pla per decisió seva) i una sessió d'avui que perd la seva activitat
+torna a `planned`. Esborrar només és possible per a `id < 0` (política RLS),
+igual que inserir.
+
 ## 2026-10-01 — La setmana no és una proposta: s'aplica i es redissenya a petició
 
 Amb la setmana rodant (S4b) el setmanal arribava a Avui com a proposta amb
