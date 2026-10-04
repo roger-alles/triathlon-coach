@@ -629,3 +629,50 @@ test('updateAthleteProfile escriu només la columna profile de la fila 1', async
   expect(chain.update).toHaveBeenCalledWith({ profile });
   expect(chain.eq).toHaveBeenCalledWith('id', 1);
 });
+
+test("getAssignableSessions: mateix esport (o brick/multisport per a un tram) a ±3 dies, sense les cancel·lades", async () => {
+  const { getAssignableSessions } = require('./api');
+  const rows = [
+    { id: 1, local_date: '2026-10-03', sport: 'run', status: 'missed' },
+    { id: 2, local_date: '2026-10-04', sport: 'bike', status: 'planned' },
+    { id: 3, local_date: '2026-10-05', sport: 'brick', status: 'planned' },
+    { id: 4, local_date: '2026-10-06', sport: 'run', status: 'cancelled' },
+  ];
+  const chain = chainResolving({ data: rows, error: null });
+  chain.gte = jest.fn(() => chain);
+  chain.lte = jest.fn(() => chain);
+  chain.is = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  const out = await getAssignableSessions('run', '2026-10-04');
+  expect(chain.gte).toHaveBeenCalledWith('local_date', '2026-10-01');
+  expect(chain.lte).toHaveBeenCalledWith('local_date', '2026-10-07');
+  expect(out.map((s: { id: number }) => s.id)).toEqual([1, 3]);
+});
+
+test('assignActivity marca el vincle com a decisió de l\'atleta; null és fora de pla', async () => {
+  const { assignActivity } = require('./api');
+  const chain = chainResolving({ error: null });
+  chain.update = jest.fn(() => chain);
+  chain.eq = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  await assignActivity(24598098311, 82);
+  expect(chain.update).toHaveBeenCalledWith({ plan_session_id: 82, linked_by_athlete: true });
+  expect(chain.eq).toHaveBeenCalledWith('id', 24598098311);
+  await assignActivity(5, null);
+  expect(chain.update).toHaveBeenLastCalledWith({ plan_session_id: null, linked_by_athlete: true });
+});
+
+test("deleteManualActivity només esborra entrades manuals (id < 0)", async () => {
+  const { deleteManualActivity } = require('./api');
+  const chain = chainResolving({ error: null });
+  chain.delete = jest.fn(() => chain);
+  chain.eq = jest.fn(() => chain);
+  chain.lt = jest.fn(() => chain);
+  mockFrom.mockReturnValue(chain);
+  await deleteManualActivity(-20261003092709);
+  expect(chain.delete).toHaveBeenCalled();
+  expect(chain.lt).toHaveBeenCalledWith('id', 0);
+  mockFrom.mockClear();
+  await expect(deleteManualActivity(24594273597)).rejects.toThrow(/manuals/);
+  expect(mockFrom).not.toHaveBeenCalled();
+});
