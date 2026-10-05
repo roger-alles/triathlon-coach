@@ -19,16 +19,17 @@ VALID_OUTPUT = {
 }
 
 
-def _response(kwargs, stop_reason="end_turn"):
+def _response(kwargs, stop_reason="end_turn", text=None):
     return SimpleNamespace(
-        content=[SimpleNamespace(type="text", text=json.dumps(VALID_OUTPUT))],
+        content=[SimpleNamespace(type="text", text=text or json.dumps(VALID_OUTPUT))],
         model=kwargs["model"], stop_reason=stop_reason,
         usage=SimpleNamespace(input_tokens=9000, output_tokens=700),
     )
 
 
 class _FakeClient:
-    def __init__(self, stop_reason="end_turn"):
+    def __init__(self, stop_reason="end_turn", text=None):
+        self.text = text
         self.kwargs = None
         self.via = None
         self.stop_reason = stop_reason
@@ -36,7 +37,7 @@ class _FakeClient:
 
     def create(self, **kwargs):
         self.kwargs, self.via = kwargs, "create"
-        return _response(kwargs, self.stop_reason)
+        return _response(kwargs, self.stop_reason, self.text)
 
     def stream(self, **kwargs):
         self.kwargs, self.via = kwargs, "stream"
@@ -47,7 +48,7 @@ class _FakeClient:
             def __exit__(self_inner, *a):
                 return False
             def get_final_message(self_inner):
-                return _response(kwargs, client.stop_reason)
+                return _response(kwargs, client.stop_reason, client.text)
         return _Stream()
 
 
@@ -164,3 +165,17 @@ def test_effort_comes_from_the_environment(monkeypatch):
     llm = CoachLLM(client=fake, model="claude-sonnet-5")
     llm.generate(system="s", messages=[{"role": "user", "content": "{}"}])
     assert fake.kwargs["output_config"]["effort"] == "xhigh"
+
+
+def test_accents_written_as_escapes_by_the_model_arrive_as_real_letters():
+    # 04/10, macro i setmanal per OpenRouter: "recuperaci\\u00f3" dins del JSON
+    escaped = dict(VALID_OUTPUT, summary="Setmana de recuperaci\\u00f3 \\u00b7 tot suau",
+                   flags=["el genoll va b\\u00e9 \\ud83d\\udeb4"])
+    fake = _FakeClient(text=json.dumps(escaped))
+    llm = CoachLLM(client=fake, model="claude-sonnet-5")
+    output, _ = llm.generate(system="s", messages=[{"role": "user", "content": "{}"}],
+                             report_type="weekly")
+    assert output["summary"] == "Setmana de recuperació · tot suau"
+    assert output["flags"] == ["el genoll va bé 🚴"]
+    # un text normal no canvia
+    assert output["rationale"] == VALID_OUTPUT["rationale"]

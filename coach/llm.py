@@ -15,6 +15,7 @@ model usat a coach_report.model.
 
 import json
 import os
+import re
 from pathlib import Path
 
 import anthropic
@@ -97,7 +98,31 @@ class CoachLLM:
         usage = {"model": response.model,
                  "input_tokens": response.usage.input_tokens,
                  "output_tokens": response.usage.output_tokens}
-        return json.loads(text), usage
+        return unescape_unicode(json.loads(text)), usage
+
+
+# Des del 04/10 (OpenRouter, respostes llargues per streaming) el model escriu
+# de vegades els accents com a escapes dins del text JSON ("recuperaci\\u00f3"):
+# un cop parsejat queda la seqüència literal \u00f3 en lloc de "ó", i arribava
+# així a l'app (títols de sessions, blocs, informes). Es decodifica aquí, que
+# és per on passa tota resposta del model. scripts/fix_unicode_escapes.py
+# repara el que ja s'havia desat.
+_ESCAPED = re.compile(r"\\u([0-9a-fA-F]{4})")
+
+
+def unescape_unicode(value):
+    """Converteix les seqüències literals \\uXXXX de tots els textos (recursiu).
+    Els parells subrogats (emojis, \\ud83d\\udeb4) es tornen a unir."""
+    if isinstance(value, str):
+        if "\\u" not in value:
+            return value
+        out = _ESCAPED.sub(lambda m: chr(int(m.group(1), 16)), value)
+        return out.encode("utf-16", "surrogatepass").decode("utf-16")
+    if isinstance(value, list):
+        return [unescape_unicode(v) for v in value]
+    if isinstance(value, dict):
+        return {k: unescape_unicode(v) for k, v in value.items()}
+    return value
 
 
 def _with_cached_context(messages: list[dict]) -> list[dict]:
