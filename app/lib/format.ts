@@ -199,6 +199,14 @@ export function statusLabel(status: string): string {
   return STATUS_LABELS[status] ?? status;
 }
 
+// Sessions que el coach ha tret del dia (cancel·lada, o moguda a un altre dia):
+// es veuen ratllades i esvaïdes, al final del dia, i no es poden registrar.
+const DROPPED = new Set(['cancelled', 'moved']);
+export const isDropped = (status: string) => DROPPED.has(status);
+export function droppedLast<T extends { status: string }>(sessions: T[]): T[] {
+  return [...sessions].sort((a, b) => Number(isDropped(a.status)) - Number(isDropped(b.status)));
+}
+
 const WEEKDAYS = ['Diumenge', 'Dilluns', 'Dimarts', 'Dimecres', 'Dijous', 'Divendres', 'Dissabte'];
 const MONTHS = [
   'gener', 'febrer', 'març', 'abril', 'maig', 'juny',

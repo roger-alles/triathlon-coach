@@ -218,3 +218,20 @@ test('la setmana actual porta la caixa de Demana canvis; una de passada, no', as
   await screen.findByText(/Dilluns 17/);
   expect(screen.queryByText('Demana canvis a la setmana')).toBeNull();
 });
+
+test("una sessió cancel·lada surt ratllada, al final del dia i sense 'Ho he fet'", async () => {
+  mockSessions.mockResolvedValue([
+    { id: 30, local_date: '2026-08-28', sport: 'run', title: 'Rodatge 50 min', status: 'cancelled',
+      duration_sec_target: 3000, priority: 'support' },
+    { id: 31, local_date: '2026-08-28', sport: 'swim', title: 'Natació tècnica', status: 'planned',
+      duration_sec_target: 2700, priority: 'support' },
+  ]);
+  await renderSetmana();
+  const cancelled = await screen.findByText('Rodatge 50 min');
+  expect(cancelled).toHaveStyle({ textDecorationLine: 'line-through' });
+  expect(screen.getByText('Natació tècnica')).not.toHaveStyle({ textDecorationLine: 'line-through' });
+  expect(screen.getByText('cancel·lada')).toBeOnTheScreen();
+  // la pendent va primer dins del dia
+  const titles = screen.getAllByText(/Rodatge 50 min|Natació tècnica/).map((n) => n.props.children);
+  expect(titles).toEqual(['Natació tècnica', 'Rodatge 50 min']);
+});

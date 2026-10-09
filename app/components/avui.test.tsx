@@ -222,3 +222,14 @@ test("una proposta setmanal amb pregunta es respon des de la targeta amb l'id de
   await waitFor(() => expect(mockSendAnswer).toHaveBeenCalledWith(41, 'Com tens el genoll?', 'Bé'));
   expect(await screen.findByText(/Tu: Bé/)).toBeOnTheScreen();
 });
+
+test("a Avui una sessió cancel·lada no surt com a 'Sessió d'avui': ratllada i sense passos", async () => {
+  mockSessions.mockResolvedValue([
+    { ...session, id: 2, title: 'Rodatge 50 min', status: 'cancelled' },
+  ]);
+  await renderAvui();
+  const title = await screen.findByText('Rodatge 50 min');
+  expect(title).toHaveStyle({ textDecorationLine: 'line-through' });
+  expect(screen.queryByText("Sessió d'avui")).toBeNull();
+  expect(screen.getByText(/cancel·lada/)).toBeOnTheScreen();
+});

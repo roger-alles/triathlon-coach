@@ -27,7 +27,7 @@ import {
   sendAnswer,
   sendDecision,
 } from '@/lib/api';
-import { formatDateCa, formatDuration, formatSegment, formatStep, sportEmoji, sportLabel, verdictColor } from '@/lib/format';
+import { formatDateCa, formatDuration, formatSegment, formatStep, isDropped, sportEmoji, sportLabel, statusLabel, verdictColor } from '@/lib/format';
 
 const VERDICT_LABEL: Record<string, string> = { green: 'VERD', amber: 'ÀMBAR', red: 'VERMELL' };
 
@@ -97,6 +97,10 @@ export default function Avui() {
     load();
   }, [load]);
 
+  // les que el coach ha tret (cancel·lades o mogudes) van a part: no toca fer-les
+  const active = sessions.filter((s) => !isDropped(s.status));
+  const dropped = sessions.filter((s) => isDropped(s.status));
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -152,10 +156,10 @@ export default function Avui() {
         />
       ))}
 
-      {sessions.map((s, i) => (
+      {active.map((s, i) => (
         <View key={s.id} style={styles.card}>
           <ThemedText style={styles.cardTitle}>
-            {sessions.length > 1 ? `Sessió d'avui (${i + 1} de ${sessions.length})` : "Sessió d'avui"}
+            {active.length > 1 ? `Sessió d'avui (${i + 1} de ${active.length})` : "Sessió d'avui"}
           </ThemedText>
           <ThemedText style={styles.cardMeta}>
             {sportEmoji(s.sport)} {sportLabel(s.sport)}
@@ -174,6 +178,16 @@ export default function Avui() {
             </ThemedText>
           ))}
           <LogSession session={s} dateISO={localDateISO()} />
+        </View>
+      ))}
+
+      {dropped.map((s) => (
+        <View key={s.id} style={[styles.card, styles.dropped]}>
+          <ThemedText style={styles.cardMeta}>
+            {sportEmoji(s.sport)}{' '}
+            <ThemedText style={[styles.cardMeta, styles.strike]}>{s.title}</ThemedText>
+            {` · ${statusLabel(s.status)}`}
+          </ThemedText>
         </View>
       ))}
 
@@ -215,6 +229,8 @@ const styles = StyleSheet.create({
   card: { backgroundColor: 'rgba(127,127,127,0.1)', borderRadius: 12, padding: 14, gap: 4 },
   cardTitle: { fontSize: 16, fontWeight: '700' },
   cardMeta: { fontSize: 14, opacity: 0.7 },
+  dropped: { opacity: 0.45 },
+  strike: { textDecorationLine: 'line-through' },
   step: { fontSize: 14, marginTop: 2 },
   rationale: { fontSize: 15, lineHeight: 22 },
   muted: { opacity: 0.6, textAlign: 'center', marginTop: 8 },

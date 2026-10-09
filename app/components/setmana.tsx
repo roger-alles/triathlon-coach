@@ -29,6 +29,8 @@ import {
   formatSegment,
   formatStep,
   formatWeekRangeCa,
+  droppedLast,
+  isDropped,
   sportEmoji,
   sportLabel,
   statusColor,
@@ -140,7 +142,7 @@ export default function Setmana() {
       )}
 
       {!loading && days.map((day, i) => {
-        const daySessions = sessions.filter((s) => s.local_date === day);
+        const daySessions = droppedLast(sessions.filter((s) => s.local_date === day));
         const extras = activities.filter((a) => a.local_date === day && a.plan_session_id == null);
         const isToday = day === today;
         return (
@@ -156,17 +158,18 @@ export default function Setmana() {
 
             {daySessions.map((s) => {
               const real = linked.get(s.id);
+              const dropped = isDropped(s.status);
               return (
-                <View key={s.id} style={styles.session}>
-                  <View style={[styles.dot, { backgroundColor: statusColor(s.status) }]} />
+                <View key={s.id} style={[styles.session, dropped && styles.dropped]}>
+                  <View style={[styles.dot, dropped ? styles.droppedDot : { backgroundColor: statusColor(s.status) }]} />
                   <TouchableOpacity
                     style={styles.sessionBody}
                     accessibilityRole="button"
                     onPress={() => toggle(s.id)}>
                     <View style={styles.titleRow}>
                       <ThemedText style={styles.emoji}>{sportEmoji(s.sport)}</ThemedText>
-                      <ThemedText style={styles.sessionTitle}>{s.title}</ThemedText>
-                      {s.priority === 'key' && s.sport !== 'rest' && (
+                      <ThemedText style={[styles.sessionTitle, dropped && styles.strike]}>{s.title}</ThemedText>
+                      {s.priority === 'key' && s.sport !== 'rest' && !dropped && (
                         <ThemedText style={styles.key}>CLAU</ThemedText>
                       )}
                     </View>
@@ -258,6 +261,9 @@ const styles = StyleSheet.create({
   extraDot: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#8a8a8a' },
   sessionBody: { flex: 1 },
   sessionTitle: { fontSize: 15, fontWeight: '600', flex: 1 },
+  dropped: { opacity: 0.45 },
+  droppedDot: { backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#8a8a8a' },
+  strike: { textDecorationLine: 'line-through' },
   sessionMeta: { fontSize: 13, opacity: 0.8 },
   real: { fontSize: 13, opacity: 0.7, fontStyle: 'italic' },
   error: { color: '#d64541', textAlign: 'center' },
