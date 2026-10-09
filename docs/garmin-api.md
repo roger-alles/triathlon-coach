@@ -57,7 +57,10 @@ TRIMP de càrrega. Present a totes les activitats amb FC.
 
 `dailySleepDTO`: `sleepTimeSeconds`, `deepSleepSeconds`, `lightSleepSeconds`,
 `remSleepSeconds`, `awakeSleepSeconds`, `napTimeSeconds`, timestamps d'inici/fi.
-També `restingHeartRate` i `bodyBatteryChange` durant la nit.
+També `restingHeartRate` i `bodyBatteryChange` durant la nit, i la sèrie de body battery
+de la nit `sleepBodyBattery` (`[{value, startGMT}]`; l'últim punt és el valor en despertar).
+**Arriba abans que el resum diari de `get_stats`**: és la font del `body_battery_max` del
+matí (vegeu `ingest/mapping.py`, decisió del 09/10/2026).
 
 ### `get_rhr_day(date)` → FC en repòs
 
@@ -65,7 +68,7 @@ També `restingHeartRate` i `bodyBatteryChange` durant la nit.
 
 ### `get_stats(date)` → resum diari (el més dens)
 
-`restingHeartRate`, `lastSevenDaysAvgRestingHeartRate`, `bodyBatteryHighestValue`/
+`restingHeartRate`, `lastSevenDaysAvgRestingHeartRate`, `bodyBatteryAtWakeTime`, `bodyBatteryHighestValue`/
 `LowestValue`, `averageStressLevel`, `maxStressLevel`, `totalSteps`, `totalKilocalories`,
 `sleepingSeconds`, `moderateIntensityMinutes`, `vigorousIntensityMinutes`.
 

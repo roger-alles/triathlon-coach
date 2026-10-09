@@ -2,6 +2,17 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-10-09 — Body battery del matí: de la nit, no del resum diari
+
+Tres informes del matí (06, 08 i 09/10) van veure una body battery de 64, 8 i
+25 quan en despertar era 87, 53 i 99, i van posar el semàfor en ambre per
+això. La porta del matí genera quan Garmin té el son d'avui, però
+`body_battery_max` sortia del resum diari (`get_stats.bodyBatteryHighestValue`),
+que Garmin actualitza més tard: aquells matins només hi havia el valor de
+mitjanit. Ara és el màxim entre el resum, `bodyBatteryAtWakeTime` i la sèrie de
+la nit (`sleep.sleepBodyBattery`), que arriba amb el son. Sense migració: la
+columna és la mateixa; el mínim es manté (és real).
+
 ## 2026-10-04 — L'atleta corregeix activitats: assignar a una sessió i esborrar manuals
 
 El cap de setmana del 3-4/10 en Roger va intercanviar dies (bici dissabte,

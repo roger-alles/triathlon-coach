@@ -69,10 +69,25 @@ def map_activity(a: dict) -> dict:
     }
 
 
+def _body_battery_max(stats: dict, sleep: dict) -> int | None:
+    """La càrrega del dia (el valor en despertar), encara que el resum diari
+    vagi endarrerit. Garmin té el son abans que el resum (`get_stats`): els
+    matins del 06, 08 i 09/10/2026 el coach va llegir 64, 8 i 25 quan en
+    despertar era 87, 53 i 99 (només hi havia el valor de mitjanit). La sèrie
+    de la nit (`sleep.sleepBodyBattery`) arriba amb el son."""
+    night = [p.get("value") for p in (sleep.get("sleepBodyBattery") or [])
+             if isinstance(p, dict)]
+    values = [v for v in (stats.get("bodyBatteryHighestValue"),
+                          stats.get("bodyBatteryAtWakeTime"), *night)
+              if isinstance(v, (int, float))]
+    return max(values) if values else None
+
+
 def map_daily(day: date, payload: dict) -> dict:
     """De {stats, sleep} d'un dia a una fila de `daily_metric`."""
     stats = payload.get("stats") or {}
-    sleep_dto = (payload.get("sleep") or {}).get("dailySleepDTO") or {}
+    sleep = payload.get("sleep") or {}
+    sleep_dto = sleep.get("dailySleepDTO") or {}
     sleep_scores = sleep_dto.get("sleepScores") or {}
     return {
         "local_date": day,
@@ -82,7 +97,7 @@ def map_daily(day: date, payload: dict) -> dict:
         "sleep_duration_sec": sleep_dto.get("sleepTimeSeconds"),
         "sleep_score": (sleep_scores.get("overall") or {}).get("value"),
         "deep_sleep_sec": sleep_dto.get("deepSleepSeconds"),
-        "body_battery_max": stats.get("bodyBatteryHighestValue"),
+        "body_battery_max": _body_battery_max(stats, sleep),
         "body_battery_min": stats.get("bodyBatteryLowestValue"),
         "training_readiness": None,     # tampoc disponible en aquest dispositiu
         "stress_avg": stats.get("averageStressLevel"),

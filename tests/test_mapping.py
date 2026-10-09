@@ -77,3 +77,24 @@ def test_map_daily_survives_empty_payloads():
     row = map_daily(date(2026, 8, 26), {"stats": None, "sleep": {}})
     assert row["resting_hr"] is None
     assert row["sleep_duration_sec"] is None
+
+
+def test_body_battery_of_the_morning_comes_from_the_night_when_the_summary_lags():
+    # 09/10/2026, informe de les 07:11: el resum només tenia el valor de mitjanit
+    lagging = {"stats": {"bodyBatteryHighestValue": 25, "bodyBatteryLowestValue": 20},
+               "sleep": {"sleepBodyBattery": [{"value": 20, "startGMT": 1}, {"value": 64, "startGMT": 2},
+                                              {"value": 99, "startGMT": 3}]}}
+    row = map_daily(date(2026, 10, 9), lagging)
+    assert row["body_battery_max"] == 99
+    assert row["body_battery_min"] == 20
+
+
+def test_body_battery_at_wake_time_counts_when_present():
+    row = map_daily(date(2026, 10, 9), {"stats": {"bodyBatteryHighestValue": 25,
+                                                  "bodyBatteryAtWakeTime": 99}, "sleep": {}})
+    assert row["body_battery_max"] == 99
+
+
+def test_body_battery_missing_everywhere_stays_null():
+    row = map_daily(date(2026, 10, 9), {"stats": None, "sleep": {"sleepBodyBattery": None}})
+    assert row["body_battery_max"] is None
