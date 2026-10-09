@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
+import {ActivityIndicator, Alert, StyleSheet, Switch, TextInput, TouchableOpacity, View} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import FormScrollView from '@/components/form-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import { Athlete, AthleteProfile, getAthlete, getSetting, setSetting, updateAthleteProfile } from '@/lib/api';
 import { supabase } from '@/lib/supabase';
@@ -120,7 +121,7 @@ export default function Jo() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
+    <FormScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
       <ThemedText style={styles.title}>{athlete?.name ?? 'Jo'}</ThemedText>
       {athlete?.max_hr != null && <ThemedText style={styles.meta}>FC màx {athlete.max_hr}</ThemedText>}
       {error && <ThemedText style={styles.error}>{error}</ThemedText>}
@@ -176,7 +177,7 @@ export default function Jo() {
       <TouchableOpacity onPress={() => supabase.auth.signOut()}>
         <ThemedText style={styles.logout}>Surt</ThemedText>
       </TouchableOpacity>
-    </ScrollView>
+    </FormScrollView>
   );
 }
 

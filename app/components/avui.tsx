@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {ActivityIndicator, RefreshControl, StyleSheet, Text, View} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import FormScrollView from '@/components/form-scroll-view';
 import LogSession from '@/components/log-session';
 import ProposalCard from '@/components/proposal-card';
 import QuestionRow from '@/components/question-row';
@@ -110,7 +111,7 @@ export default function Avui() {
   }
 
   return (
-    <ScrollView
+    <FormScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       refreshControl={
@@ -213,7 +214,7 @@ export default function Avui() {
         </>
       )}
 
-    </ScrollView>
+    </FormScrollView>
   );
 }
 
