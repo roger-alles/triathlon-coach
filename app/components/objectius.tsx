@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import {ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import FormScrollView from '@/components/form-scroll-view';
 import GoalForm from '@/components/goal-form';
 import { ThemedText } from '@/components/themed-text';
 import { AthleteRequest, getBlocks, getGoals, getLogistics, getMacroAnswer, getRequests, Goal, localDateISO, LogisticsTask, MacroAnswer, PlanBlockFull, sendRequest, setLogisticsDone } from '@/lib/api';
@@ -102,13 +103,13 @@ export default function Objectius() {
 
   if (editing) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
+      <FormScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
         <GoalForm
           goal={editing === 'new' ? undefined : editing}
           onDone={() => { setEditing(null); load(); }}
           onCancel={() => setEditing(null)}
         />
-      </ScrollView>
+      </FormScrollView>
     );
   }
 
@@ -190,11 +191,11 @@ export default function Objectius() {
 
   if (!goal) {
     return (
-      <ScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
+      <FormScrollView style={styles.container} contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
         <ThemedText>{error ?? 'Cap objectiu actiu.'}</ThemedText>
         {newButton}
         {planSection}
-      </ScrollView>
+      </FormScrollView>
     );
   }
 
@@ -203,7 +204,7 @@ export default function Objectius() {
   const times = p.target_times_sec ?? {};
 
   return (
-    <ScrollView
+    <FormScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}>
       {error && <ThemedText style={styles.error}>{error}</ThemedText>}
@@ -339,7 +340,7 @@ export default function Objectius() {
         {newButton}
       </View>
 
-    </ScrollView>
+    </FormScrollView>
   );
 }
 

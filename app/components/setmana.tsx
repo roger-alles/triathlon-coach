@@ -3,13 +3,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import FormScrollView from '@/components/form-scroll-view';
 import LogSession from '@/components/log-session';
 import WeekRequestBox from '@/components/week-request';
 import { ThemedText } from '@/components/themed-text';
@@ -98,7 +98,7 @@ export default function Setmana() {
   const linked = new Map(activities.filter((a) => a.plan_session_id != null).map((a) => [a.plan_session_id, a]));
 
   return (
-    <ScrollView
+    <FormScrollView
       style={styles.container}
       contentContainerStyle={[styles.content, { paddingTop: insets.top + 8 }]}
       refreshControl={
@@ -232,7 +232,7 @@ export default function Setmana() {
           </View>
         );
       })}
-    </ScrollView>
+    </FormScrollView>
   );
 }
 

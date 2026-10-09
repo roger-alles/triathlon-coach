@@ -3,13 +3,13 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  ScrollView,
   StyleSheet,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 
+import FormScrollView from '@/components/form-scroll-view';
 import { ThemedText } from '@/components/themed-text';
 import {
   ActivityDetail,
@@ -153,7 +153,7 @@ export default function Activitat({ id }: { id: number }) {
   const [y, m, d] = activity.local_date.split('-').map(Number);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <FormScrollView style={styles.container} contentContainerStyle={styles.content}>
       <ThemedText style={styles.title}>
         {sportEmoji(activity.sport)} {sportLabel(activity.sport)} · {formatDateCa(new Date(y, m - 1, d))}
       </ThemedText>
@@ -253,7 +253,7 @@ export default function Activitat({ id }: { id: number }) {
           <ThemedText style={styles.deleteText}>Esborra aquesta entrada manual</ThemedText>
         </TouchableOpacity>
       )}
-    </ScrollView>
+    </FormScrollView>
   );
 }
 
