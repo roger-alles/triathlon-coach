@@ -62,3 +62,17 @@ test('quan el coach acaba, es refresca sol i avisa la setmana perquè es recarre
   expect(onApplied).toHaveBeenCalledTimes(1);
   jest.useRealTimers();
 });
+
+test("el camp per escriure va abans de la resposta anterior, i l'explicació llarga surt plegada", async () => {
+  const long = 'Com avui ja has corregut… '.repeat(20);
+  mockGet.mockResolvedValue({ ...base, status: 'answered', summary: 'Natació cancel·lada', rationale: long });
+  await render(<WeekRequestBox weekStart="2026-10-05" onApplied={jest.fn()} />);
+  const rationale = await screen.findByText(long);
+  expect(rationale.props.numberOfLines).toBe(3);
+  const user = userEvent.setup();
+  await user.press(screen.getByText('Mostra-ho tot'));
+  expect(screen.getByText(long).props.numberOfLines).toBeUndefined();
+  // ordre: primer el camp, després el que vas demanar
+  const tree = JSON.stringify(screen.toJSON());
+  expect(tree.indexOf('Què vols canviar')).toBeLessThan(tree.indexOf('Has demanat'));
+});

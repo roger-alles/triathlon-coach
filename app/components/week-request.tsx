@@ -23,6 +23,7 @@ export default function WeekRequestBox({
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const wasInFlight = useRef(false);
 
   const load = useCallback(async () => {
@@ -68,27 +69,6 @@ export default function WeekRequestBox({
     <View style={styles.card}>
       <ThemedText style={styles.title}>Demana canvis a la setmana</ThemedText>
 
-      {request && (
-        <View style={styles.last}>
-          <ThemedText style={styles.asked}>Has demanat: «{request.text}»</ThemedText>
-          {request.status === 'pending' && (
-            <ThemedText style={styles.pending}>Enviada · el coach s&apos;hi posarà en uns minuts</ThemedText>
-          )}
-          {request.status === 'processing' && (
-            <ThemedText style={styles.pending}>El coach està redissenyant la setmana…</ThemedText>
-          )}
-          {request.status === 'answered' && (
-            <>
-              <ThemedText style={styles.done}>Fet{request.summary ? `: ${request.summary}` : ''}</ThemedText>
-              {request.rationale && <ThemedText style={styles.rationale}>{request.rationale}</ThemedText>}
-            </>
-          )}
-          {request.status === 'failed' && (
-            <ThemedText style={styles.error}>No s&apos;ha pogut: {request.error ?? 'error desconegut'}</ThemedText>
-          )}
-        </View>
-      )}
-
       <View style={styles.row}>
         <TextInput
           style={styles.input}
@@ -108,6 +88,35 @@ export default function WeekRequestBox({
           <ThemedText style={styles.buttonText}>{busy ? '…' : 'Demana'}</ThemedText>
         </TouchableOpacity>
       </View>
+      {request && (
+        <View style={styles.last}>
+          <ThemedText style={styles.asked}>Has demanat: «{request.text}»</ThemedText>
+          {request.status === 'pending' && (
+            <ThemedText style={styles.pending}>Enviada · el coach s&apos;hi posarà en uns minuts</ThemedText>
+          )}
+          {request.status === 'processing' && (
+            <ThemedText style={styles.pending}>El coach està redissenyant la setmana…</ThemedText>
+          )}
+          {request.status === 'answered' && (
+            <>
+              <ThemedText style={styles.done}>Fet{request.summary ? `: ${request.summary}` : ''}</ThemedText>
+              {request.rationale && (
+                // plegada: si no, empeny la caixa avall i el teclat la tapa
+                <TouchableOpacity accessibilityRole="button" onPress={() => setExpanded((v) => !v)}>
+                  <ThemedText style={styles.rationale} numberOfLines={expanded ? undefined : 3}>
+                    {request.rationale}
+                  </ThemedText>
+                  <ThemedText style={styles.more}>{expanded ? 'Mostra menys' : 'Mostra-ho tot'}</ThemedText>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
+          {request.status === 'failed' && (
+            <ThemedText style={styles.error}>No s&apos;ha pogut: {request.error ?? 'error desconegut'}</ThemedText>
+          )}
+        </View>
+      )}
+
       {error && <ThemedText style={styles.error}>{error}</ThemedText>}
     </View>
   );
@@ -121,6 +130,7 @@ const styles = StyleSheet.create({
   pending: { fontSize: 13, fontWeight: '600', color: '#e6a817' },
   done: { fontSize: 14, fontWeight: '600', color: '#2e9e5b' },
   rationale: { fontSize: 13, opacity: 0.75 },
+  more: { fontSize: 12, fontWeight: '600', color: '#2e9e5b', marginTop: 2 },
   row: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   input: {
     flex: 1,
