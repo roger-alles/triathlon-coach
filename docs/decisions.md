@@ -14,7 +14,8 @@ Tres canvis, tots JavaScript (arriben amb EAS Update, sense compilació nova):
 - `AppState` → `supabase.auth.startAutoRefresh()` / `stopAutoRefresh()`, la
   recepta de Supabase per a React Native: el temporitzador de renovació
   s'atura amb l'app congelada.
-- `fetch` propi al client: un 401 es repeteix un cop al cap de 2 s. En tornar,
+- `fetch` propi al client: un 401 de JWT (PGRST301/PGRST303) es repeteix un
+  cop al cap de 2 s; els altres 401 surten a l'acte. En tornar,
   supabase-js renova el token just abans de la petició i l'API de dades el
   rebutja uns segons perquè el seu rellotge va per darrere del del servidor
   d'autenticació. Un 401 vol dir que la petició no s'ha executat: repetir-la

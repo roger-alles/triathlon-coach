@@ -14,10 +14,21 @@ export const AUTH_RETRY_DELAY_MS = 2000;
 // En tornar de segon pla, supabase-js renova el token caducat just abans de la
 // petició, i l'API de dades el pot rebutjar uns segons ("JWT issued at future":
 // el seu rellotge va una mica per darrere del del servidor d'autenticació). Un
-// 401 vol dir que la petició no s'ha executat: es pot repetir sense risc.
+// 401 vol dir que la petició no s'ha executat: es pot repetir sense risc. Només
+// es repeteix si l'error parla del JWT (PGRST301/PGRST303); qualsevol altre
+// 401, com una sessió revocada, surt a l'acte.
+async function isJwtRejection(response: Response): Promise<boolean> {
+  if (response.status !== 401) return false;
+  try {
+    return /JWT|PGRST30\d/i.test(await response.clone().text());
+  } catch {
+    return false;
+  }
+}
+
 export async function fetchRetryingAuth(input: RequestInfo | URL, init?: RequestInit) {
   const response = await fetch(input, init);
-  if (response.status !== 401) return response;
+  if (!(await isJwtRejection(response))) return response;
   await new Promise((resolve) => setTimeout(resolve, AUTH_RETRY_DELAY_MS));
   return fetch(input, init);
 }
