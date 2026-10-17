@@ -8,13 +8,20 @@ login vol dir IP bloquejada temporalment: esperar, no reintentar en bucle.
 import os
 import sys
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import NamedTuple
 
 from garminconnect import Garmin
 
 TOKENSTORE = "~/.garminconnect"
 PAUSE_SEC = 0.5  # amable amb el servidor (spec §9)
+
+
+class SleepStatus(NamedTuple):
+    seconds: int
+    end: datetime | None        # fi del son segons Garmin (UTC)
+    last_sync: datetime | None  # última sincronització del rellotge avui (UTC)
 
 
 def _login() -> Garmin:
@@ -48,9 +55,22 @@ class GarminProvider:
             time.sleep(PAUSE_SEC)
         return payload
 
-    def fetch_sleep_seconds(self, day: date) -> int | None:
-        """Només el son d'un dia, una petició: per a la porta del matí.
-        None mentre Garmin encara no ha rebut la nit (el rellotge no ha sincronitzat)."""
+    def fetch_sleep_status(self, day: date) -> SleepStatus | None:
+        """El son d'un dia i l'última sincronització del rellotge: per a la porta del matí.
+        None mentre Garmin encara no ha rebut la nit (una petició); si l'ha rebut,
+        una segona petició (stats) per saber si el rellotge ha sincronitzat després
+        de despertar-se. Una sincronització a mitja nit publica un son parcial."""
         payload = self.client.get_sleep_data(day.isoformat())
         time.sleep(PAUSE_SEC)
-        return (payload or {}).get("dailySleepDTO", {}).get("sleepTimeSeconds")
+        dto = (payload or {}).get("dailySleepDTO") or {}
+        if not dto.get("sleepTimeSeconds"):
+            return None
+        stats = self.client.get_stats(day.isoformat()) or {}
+        time.sleep(PAUSE_SEC)
+        end_ms = dto.get("sleepEndTimestampGMT")
+        last_sync = stats.get("lastSyncTimestampGMT")  # "2026-10-17T13:17:45.558", GMT
+        return SleepStatus(
+            seconds=dto["sleepTimeSeconds"],
+            end=datetime.fromtimestamp(end_ms / 1000, timezone.utc) if end_ms else None,
+            last_sync=(datetime.fromisoformat(last_sync).replace(tzinfo=timezone.utc)
+                       if last_sync else None))

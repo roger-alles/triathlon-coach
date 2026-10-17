@@ -71,7 +71,8 @@ abans). Càrregues d'activitats sense FC són estimades (durada×50) — soroll.
    acceptats). Mai escriure directament a `plan_session`.
 2. **No executar `coach.run` ni res que gasti l'API d'Anthropic** — el coach
    automàtic ja corre sol al servidor `alberginia` (`docs/server.md`: matí cada
-   5 min de 06:00 a 12:00, genera quan Garmin ja té el son d'avui; sync cada hora
+   5 min de 06:00 a 12:00, genera quan Garmin ja té el son d'avui
+   sincronitzat de les 06:00 ençà, i `coach.recheck` el refà si el son canvia; sync cada hora
    06-22; vespre 21:30; setmanal diumenge 20:30). Tu ets la consulta.
 3. Pots escriure, si ell t'ho demana: notes/RPE/sensacions a `activity`,
    entrades manuals d'activitats (id negatiu), respostes a `athlete_answer`.

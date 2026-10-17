@@ -5,9 +5,11 @@
 # Si el sync falla, el coach NO s'executa: mai opinions sobre dades velles (spec §9).
 #
 # morning:   cada 5 min. PRIMER la porta (coach.gate: ¿ja hi ha informe? ¿Garmin té
-#            el son d'avui? — 0-1 peticions), i només si diu GENERA: sync complet +
-#            coach. COACH_FORCE=1 salta la porta.
+#            el son d'avui, sincronitzat de les 06:00 ençà? — 0-2 peticions), i només
+#            si diu GENERA: sync complet + coach. COACH_FORCE=1 salta la porta.
 # sync:      cada hora, sync complet perquè els entrenos surtin a l'app durant el dia.
+#            Després, coach.recheck: fins a les 12:00, si el son d'avui ha canviat
+#            respecte del que va fer servir l'informe del matí, el refà (un cop).
 # decisions: cada 5 min, processa Aplica/Descarta/Desfés de l'atleta (coach.decisions).
 #
 # Un sol lock per a totes les feines (logs/coach.lock): dues generacions alhora, o
@@ -36,7 +38,7 @@ esac
         make sync
         .venv/bin/python -m coach.run daily
       fi ;;
-    sync)      make sync ;;
+    sync)      make sync; .venv/bin/python -m coach.recheck ;;
     evening)   make sync; .venv/bin/python -m coach.run daily --tomorrow ;;
     weekly)    make sync; .venv/bin/python -m coach.run weekly ;;
     decisions) .venv/bin/python -m coach.decisions ;;
