@@ -2,6 +2,37 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-10-17 — Informe del matí: sincronització de matí, i correcció si el son canvia
+
+Dos informes del matí (13 i 17/10) es van generar a les 06:00 amb 4,1 i 4,2 h
+de son quan la nit real va ser de 7,3 i 9,5 h; el del 17 també veia una body
+battery màxima de 58 (real: 90). El mòbil havia sincronitzat a mitja nit i
+Garmin publica el son fins aquell moment: `sleepTimeSeconds` ja no és zero i
+la porta deixava passar. El coach va posar el semàfor en ambre i va preguntar
+per una nit dolenta que no existia.
+
+Dues peces:
+
+- **Porta** (`coach.gate`): a més del son, demana
+  `get_stats.lastSyncTimestampGMT` i només genera si l'última sincronització
+  és de les 06:00 (hora local) o més tard; una d'abans és de nit. A partir de
+  les 10:00 genera igualment, amb el motiu al log. Idea d'en Roger.
+- **Correcció** (`coach.recheck`, després de cada sync horari fins a les
+  12:00): compara el son i la body battery de l'`input_snapshot` de l'informe
+  amb la BD; si han canviat ≥ 1 h o ≥ 15, refà l'informe un sol cop al dia i hi
+  posa una nota. Cobreix el cas que la porta no veu: una sincronització
+  després de les 6 amb en Roger encara dormint (dissabte que es lleva a les 9).
+  Zero peticions a Garmin; en mode híbrid, el segon informe pot aplicar canvis
+  petits sobre el pla que ja ha tocat el primer (es poden desfer igual).
+
+Descartats: (a) exigir 10 min entre la fi del son i la sincronització — retarda
+l'informe justament quan el mòbil sincronitza en despertar-se, el cas normal;
+(b) `sleepWindowConfirmationType == "enhanced_confirmed_final"` — dies amb el
+son ja sencer es queden en `enhanced_confirmed` (30/09, 14/10, 17/10 a la
+tarda). Pendent de comprovar: si `bodyBatteryAtWakeTime` només apareix en
+despertar-se, seria un senyal millor que l'hora (cal veure una sincronització
+de nit).
+
 ## 2026-10-09 — Body battery del matí: de la nit, no del resum diari
 
 Tres informes del matí (06, 08 i 09/10) van veure una body battery de 64, 8 i
