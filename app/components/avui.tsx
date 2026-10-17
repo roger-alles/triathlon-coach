@@ -7,6 +7,7 @@ import LogSession from '@/components/log-session';
 import ProposalCard from '@/components/proposal-card';
 import QuestionRow from '@/components/question-row';
 import { ThemedText } from '@/components/themed-text';
+import { useOnForeground } from '@/lib/use-foreground';
 
 import {
   AthleteAnswer,
@@ -97,6 +98,9 @@ export default function Avui() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
+
+  // al matí, l'informe nou (l'app ha passat la nit en segon pla, no tancada)
+  useOnForeground(load);
 
   // les que el coach ha tret (cancel·lades o mogudes) van a part: no toca fer-les
   const active = sessions.filter((s) => !isDropped(s.status));

@@ -2,6 +2,27 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-10-17 — App de TestFlight: sessió i dades en tornar de segon pla
+
+Amb l'app instal·lada (TestFlight), iOS ja no la tanca: queda congelada en
+segon pla. En Roger l'havia de tancar del tot gairebé cada matí perquè Avui
+ensenyava un error de JWT ("JWT issued at future") al lloc de l'informe.
+Amb Expo Go no es notava perquè l'app es tancava sovint.
+
+Tres canvis, tots JavaScript (arriben amb EAS Update, sense compilació nova):
+
+- `AppState` → `supabase.auth.startAutoRefresh()` / `stopAutoRefresh()`, la
+  recepta de Supabase per a React Native: el temporitzador de renovació
+  s'atura amb l'app congelada.
+- `fetch` propi al client: un 401 de JWT (PGRST301/PGRST303) es repeteix un
+  cop al cap de 2 s; els altres 401 surten a l'acte. En tornar,
+  supabase-js renova el token just abans de la petició i l'API de dades el
+  rebutja uns segons perquè el seu rellotge va per darrere del del servidor
+  d'autenticació. Un 401 vol dir que la petició no s'ha executat: repetir-la
+  és segur, també per a les escriptures.
+- Avui torna a carregar en passar a primer pla (`useOnForeground`): sense
+  això, al matí ensenyava l'informe d'ahir fins que estiraves per refrescar.
+
 ## 2026-10-17 — Informe del matí: sincronització de matí, i correcció si el son canvia
 
 Dos informes del matí (13 i 17/10) es van generar a les 06:00 amb 4,1 i 4,2 h
