@@ -14,6 +14,11 @@ llançant `publish-app.sh` a mà. `eas-cli` va fixat (24.8.0).
 
 De pas, s'atura `expo-dev` i es tanca el 8081 (ufw i Clouding): era el risc A
 de la revisió de seguretat de setembre, acceptat fins que hi hagués TestFlight.
+A Clouding no es va editar el tallafocs `default`, perquè és compartit amb
+altres servidors del compte que no són d'en Roger:
+`alberginia` passa a un de propi, `alberfirewall` (22/tcp i ICMP). Verificat des
+de fora: només respon el 22; la sortida a Garmin, Supabase, Anthropic, Expo i
+GitHub funciona.
 
 ## 2026-10-17 — App de TestFlight: sessió i dades en tornar de segon pla
 

@@ -123,6 +123,7 @@ cicle reintenta.
 | SSH | només claus: `PermitRootLogin prohibit-password`, `PasswordAuthentication no`, `MaxAuthTries 3` (`/etc/ssh/sshd_config.d/10-hardening.conf`) | `sshd -T \| grep -E "permitrootlogin\|passwordauth"`; des del Mac `ssh -o PubkeyAuthentication=no entrenador` ha de dir `Permission denied (publickey)` |
 | fail2ban | jail `sshd`, 3 intents en 10 min → 1 h de ban (`/etc/fail2ban/jail.local`, backend systemd) | `fail2ban-client status sshd` |
 | ufw | entrada denegada per defecte; només 22/tcp | `ufw status verbose` |
+| Tallafocs de Clouding | `alberfirewall`, només per a aquest servidor: 22/tcp i ICMP (ping). **No** `default`: és compartit amb (d'altres persones del compte) i obre molts més ports; tocar-lo els afecta | Panell → `alberginia` → Xarxa → Firewalls Vinculats; des del Mac, `nc -z -G 4 <IP del servidor> 8081` ha de fallar |
 | Actualitzacions | `unattended-upgrades` diari (`/etc/apt/apt.conf.d/20auto-upgrades`) | `systemctl status unattended-upgrades`; `ls /var/run/reboot-required` |
 | Secrets | `.env` i `app/.env` 600 de `entrenador`; tokens Garmin a `~/.garminconnect` 700 | `ls -la ~entrenador/entrenador-triatlo/.env` |
 
@@ -181,7 +182,8 @@ en obrir-se i l'aplica la vegada següent.
 
 Fins al 17/10 l'app s'obria amb Expo Go contra un servidor d'Expo (`expo-dev`,
 port 8081 obert a Internet: risc A de la revisió de seguretat). Amb TestFlight
-ja no feia falta: servei aturat i desactivat, port tancat a ufw i a Clouding.
+ja no feia falta: servei aturat i desactivat, port tancat a ufw i a Clouding
+(el servidor passa del tallafocs compartit `default` al seu, `alberfirewall`).
 
 ## Què NO hi ha al servidor
 
