@@ -21,11 +21,11 @@ resp=$(curl -s -m 10 "$URL/auth/v1/signup" -H "apikey: $KEY" -H "Content-Type: a
   -d "{\"email\":\"seccheck-$(date +%s)@example.com\",\"password\":\"$(openssl rand -hex 12)Aa1!\"}")
 echo "$resp" | grep -q "signup_disabled" && ok "signup → signup_disabled" || ko "signup NO està tancat: $resp"
 
-echo "== ports oberts (només 22 i 8081) =="
+echo "== ports oberts (només 22) =="
 host=$(echo "$URL" | sed -E 's#https?://##;s#/.*##')
 if command -v nmap >/dev/null; then
   open=$(nmap -Pn -sT -T4 --top-ports 200 "${SERVER_IP:-<IP del servidor>}" 2>/dev/null | grep -cE "^[0-9]+/tcp +open")
-  [ "$open" = "2" ] && ok "ports oberts: $open" || ko "ports oberts: $open (esperat 2)"
+  [ "$open" = "1" ] && ok "ports oberts: $open" || ko "ports oberts: $open (esperat 1, el 22)"
 else
   echo "  --  nmap no instal·lat, salto"
 fi

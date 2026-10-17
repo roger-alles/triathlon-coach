@@ -34,7 +34,7 @@
 | Setmanal | `30 20 * * 0` | `coach-job.sh weekly`: sync + revisió setmanal |
 | Decisions i peticions | `3-58/5 6-23 * * *` | `coach-job.sh decisions`: aplica / descarta / desfà les propostes segons el que l'atleta ha tocat a l'app (`coach_decision`), i processa les peticions (`athlete_request`: ara `regenerate_macro`, màxim un macro al dia, ~1 € amb Opus). Inert mentre `coach_apply_mode` sigui `dry_run` |
 | Còpia BD | `50 4 * * *` | `backup-db.sh`: pg_dump comprimit, 14 dies |
-| Desplegament (crontab de root) | `50 5 * * *` | `git pull --ff-only` de `main` + `pip install` + `npm install` a `app/` + reinici del servei `expo-dev` |
+| Desplegament (crontab de root) | `50 5 * * *` | `scripts/deploy.sh` com a `entrenador`: `git pull --ff-only` de `main` + `pip install`; si hi ha canvis a `app/`, `npm ci` + `scripts/publish-app.sh` (tests de l'app i EAS Update). Log: `logs/deploy.log` |
 
 Cost amb Garmin un dia típic: ~25 intents buits × 1-2 peticions + 1 sync del matí
 + 17 syncs horaris × ~17 ≈ 330 peticions, repartides tot el dia.
@@ -53,7 +53,7 @@ Tot el que es fusiona a `main` a GitHub és al servidor l'endemà a les 05:50.
 El desplegament NO aplica migracions: quan un PR en porta una, executar
 `make migrate` (des del Mac o del servidor, mateixa BD) ABANS que el codi nou
 arrenqui, i afegir a mà al crontab les línies noves de la taula de dalt.
-Per desplegar a l'acte: `ssh entrenador 'sudo -u entrenador -H git -C ~/entrenador-triatlo pull --ff-only && systemctl restart expo-dev'`.
+Per desplegar a l'acte: `ssh entrenador 'sudo -u entrenador -H bash ~/entrenador-triatlo/scripts/deploy.sh'`.
 
 ## Còpia de seguretat de la base de dades
 
@@ -122,7 +122,7 @@ cicle reintenta.
 |---|---|---|
 | SSH | només claus: `PermitRootLogin prohibit-password`, `PasswordAuthentication no`, `MaxAuthTries 3` (`/etc/ssh/sshd_config.d/10-hardening.conf`) | `sshd -T \| grep -E "permitrootlogin\|passwordauth"`; des del Mac `ssh -o PubkeyAuthentication=no entrenador` ha de dir `Permission denied (publickey)` |
 | fail2ban | jail `sshd`, 3 intents en 10 min → 1 h de ban (`/etc/fail2ban/jail.local`, backend systemd) | `fail2ban-client status sshd` |
-| ufw | entrada denegada per defecte; permès 22/tcp i 8081/tcp | `ufw status verbose` |
+| ufw | entrada denegada per defecte; només 22/tcp | `ufw status verbose` |
 | Actualitzacions | `unattended-upgrades` diari (`/etc/apt/apt.conf.d/20auto-upgrades`) | `systemctl status unattended-upgrades`; `ls /var/run/reboot-required` |
 | Secrets | `.env` i `app/.env` 600 de `entrenador`; tokens Garmin a `~/.garminconnect` 700 | `ls -la ~entrenador/entrenador-triatlo/.env` |
 
@@ -154,48 +154,34 @@ scp ~/.garminconnect/garmin_tokens.json entrenador:/root/ && ssh entrenador 'ins
 
 Un `429` al login vol dir IP bloquejada temporalment: esperar, no reintentar en bucle.
 
-## App mòbil: Expo Go contra el servidor (des del 2026-09-07 nit)
+## App mòbil: TestFlight + EAS Update (des del 2026-10-17)
 
-L'app no s'instal·la: Expo Go la descarrega del servidor d'Expo (Metro), que
-corre aquí com a servei `systemd`, permanent i amb reinici automàtic.
+L'app s'instal·la amb TestFlight (compilació d'EAS, perfil `production`). El
+codi JavaScript li arriba amb EAS Update pel canal `production`: l'app el baixa
+en obrir-se i l'aplica la vegada següent.
 
-- Adreça per a Expo Go: **`exp://<IP del servidor>:8081`** (Enter URL manually, o
-  surt sola a Home > Development servers). Cal el mateix compte d'Expo al mòbil
-  i al servidor (`rogeralles`; sessió copiada a `/home/entrenador/.expo/state.json`).
-- Servei: `/etc/systemd/system/expo-dev.service` (usuari `entrenador`,
-  `npx expo start --port 8081 --host lan`, `REACT_NATIVE_PACKAGER_HOSTNAME=<IP del servidor>`).
-  `systemctl status|restart expo-dev`. Log: `logs/expo-dev.log`.
-- Tallafocs de Clouding: regla d'entrada TCP 8081 des de qualsevol origen
-  (afegida per en Roger al panell). Sense ella, el port no respon des de fora.
-- Primera compilació del paquet iOS: ~60 s (1 vCPU); després queda en memòria
-  i l'app s'obre en segons. Si el servei es reinicia, la primera obertura torna
-  a trigar un minut.
-- Secrets de l'app: `app/.env` (`EXPO_PUBLIC_*`, clau anon de Supabase; van
-  dins del paquet, com al Mac).
-- L'avís `react-native-devtools: libatk-1.0.so.0` al log és innocu: és el
-  depurador gràfic, que no té sentit en un servidor sense pantalla.
+- **Publicar**: `scripts/publish-app.sh` passa els tests i el typecheck de
+  l'app i fa `eas update --channel production --environment production`, amb
+  `eas-cli` a una versió fixa. Ho fa sol `deploy.sh` quan el desplegament porta
+  canvis a `app/`; a mà:
+  `ssh entrenador 'sudo -u entrenador -H bash ~/entrenador-triatlo/scripts/publish-app.sh'`.
+- **Sessió d'Expo**: la del compte `rogeralles`, a `/home/entrenador/.expo/state.json`
+  (copiada del Mac el 07/09). Si caduca: `npx eas-cli login` com a `entrenador`,
+  o un `EXPO_TOKEN` a l'entorn.
+- **Variables de l'app** (`EXPO_PUBLIC_SUPABASE_*`): les de l'entorn
+  "production" d'EAS (`eas env:list --environment production`). `app/.env` del
+  servidor ja no fa falta per publicar.
+- **Codi natiu**: amb `runtimeVersion` per fingerprint, una actualització només
+  arriba a les compilacions amb el mateix codi natiu. Si un PR afegeix un mòdul
+  natiu (p. ex. notificacions), cal `eas build` + `eas submit` des del Mac.
+- **Les compilacions de TestFlight caduquen als 90 dies**: encara que no
+  canviï res, cal pujar-ne una de nova abans. EAS Update no allarga el termini.
+- **Tornar enrere**: `eas update:republish --group <id anterior>` (l'id surt a
+  `eas update:list --branch production`).
 
-Per què això i no TestFlight: en Roger prefereix seguir amb Expo Go de moment
-(canvis visibles a l'acte sense compilar). Limitacions: cada SDK nou d'Expo Go
-trenca l'app fins que es puja; sense notificacions push.
-
-**Caigudes per peticions web (arreglat 02/10)**: des del 20/09 com a mínim,
-8-25 reinicis al dia. Robots que escanegen el port 8081 hi feien peticions de
-navegador; Expo renderitzava la versió web, el client de Supabase demanava
-`window` (que a Node no existeix) i el procés queia (`status=7/NOTRUNNING`).
-Ara `app.json` porta `"platforms": ["ios", "android"]`: el servidor ja no
-prepara mai la web. Comprovar: `journalctl -u expo-dev --since today | grep -c "Main process exited"`.
-
-**Risc conegut (revisió 10/09)**: el port 8081 és HTTP obert a tot Internet.
-El login d'Expo Go 57 protegeix l'app dins d'Expo Go, NO el port: qualsevol
-pot descarregar el paquet JavaScript (amb la URL i la clau *publicable* de
-Supabase, que és pública per disseny; cap secret de servidor) i veure els
-endpoints de Metro. Amb un sol usuari i la clau publicable és tolerable a curt
-termini; no ho és com a estat permanent. Sortides, de menys a més feina:
-(1) regla del tallafocs limitada a la IP d'en Roger (falla fora de casa);
-(2) Tailscale al servidor i al mòbil, i Metro només a la xarxa privada;
-(3) TestFlight (compte de desenvolupador ja disponible): l'app instal·lada,
-sense Metro exposat, amb notificacions. La (3) és la recomanada després del 27/09.
+Fins al 17/10 l'app s'obria amb Expo Go contra un servidor d'Expo (`expo-dev`,
+port 8081 obert a Internet: risc A de la revisió de seguretat). Amb TestFlight
+ja no feia falta: servei aturat i desactivat, port tancat a ufw i a Clouding.
 
 ## Què NO hi ha al servidor
 

@@ -32,3 +32,23 @@ def test_backup_pull_plist_points_to_script():
 @pytest.mark.parametrize("plist", PLISTS, ids=[Path(p).name for p in PLISTS])
 def test_plist_is_valid(plist):
     subprocess.run(["plutil", "-lint", "-s", plist], check=True)
+
+
+def test_deploy_runs_inside_a_function_because_git_pull_can_rewrite_it():
+    src = (ROOT / "scripts" / "deploy.sh").read_text()
+    assert src.rstrip().endswith('main "$@"\nexit')
+    assert src.index("main() {") < src.index("git pull -q")
+
+
+def test_deploy_publishes_the_app_only_when_app_changed():
+    src = (ROOT / "scripts" / "deploy.sh").read_text()
+    assert 'git diff --quiet "$before" "$after" -- app/' in src
+    assert "expo-dev" not in src  # el servidor d'Expo Go ja no existeix
+
+
+def test_publish_app_tests_before_publishing_with_a_pinned_cli():
+    src = (ROOT / "scripts" / "publish-app.sh").read_text()
+    assert "set -euo pipefail" in src  # si els tests fallen, no es publica
+    assert src.index("npx jest") < src.index("update --channel production")
+    assert src.index("npx tsc --noEmit") < src.index("update --channel production")
+    assert "eas-cli@24.8.0" in src
