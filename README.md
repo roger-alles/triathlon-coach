@@ -73,4 +73,6 @@ make report      # últim informe del coach
 - Setmana rodant: diumenge el coach escriu la setmana següent dins del bloc
   (o l'ajusta si ja existeix); s'aprova a Avui amb el raonament i les
   preguntes del coach a la targeta. Els objectius passats es donen per fets.
-- Pendent: multiusuari i TestFlight.
+- App instal·lada amb TestFlight; el desplegament diari del servidor la
+  publica amb EAS Update quan hi ha canvis a `app/` (si passen els tests).
+- Pendent: multiusuari.

@@ -2,6 +2,19 @@
 
 > Per què s'ha fet cada cosa així (spec §11). Una entrada per decisió, amb data.
 
+## 2026-10-17 — L'app es publica des del servidor; fora Expo Go i el port 8081
+
+Amb l'app de TestFlight, un PR fusionat no arribava al mòbil fins que algú
+feia `eas update` a mà des del Mac. Ara el desplegament diari (`deploy.sh`)
+publica l'app (`publish-app.sh`) quan porta canvis a `app/`, després de passar
+els tests i el typecheck. Es va triar el servidor i no una GitHub Action per no
+afegir una dependència: el servidor ja baixa `main` cada matí i ja té la sessió
+d'Expo. Contrapartida: un canvi de l'app arriba l'endemà a les 05:50, o a l'acte
+llançant `publish-app.sh` a mà. `eas-cli` va fixat (24.8.0).
+
+De pas, s'atura `expo-dev` i es tanca el 8081 (ufw i Clouding): era el risc A
+de la revisió de seguretat de setembre, acceptat fins que hi hagués TestFlight.
+
 ## 2026-10-17 — App de TestFlight: sessió i dades en tornar de segon pla
 
 Amb l'app instal·lada (TestFlight), iOS ja no la tanca: queda congelada en
