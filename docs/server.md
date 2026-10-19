@@ -81,7 +81,10 @@ capes més:
   launchd `cat.entrenador.backup-pull` a les 08:15 (si el Mac dormia, en
   despertar). Instal·lar: copiar el plist de `scripts/launchd/` a
   `~/Library/LaunchAgents/` i `launchctl bootstrap gui/$UID <plist>`.
-  Log: `logs/launchd-backup-pull.log`.
+  Log: `logs/launchd-backup-pull.log`. Comprovar: `ls ~/Backups/entrenador-triatlo`
+  ha de tenir el `db-` d'avui. Després de restaurar o migrar el Mac cal tornar-lo
+  a instal·lar (19/10: s'havia perdut amb una restauració, i el plist encara
+  apuntava a la carpeta antiga del projecte).
 - **Snapshot de Clouding**: snapshot de la VM sencera (inclou `~/backups`, el
   `.env` i els tokens de Garmin) des del panell de Clouding, setmanal, fet a
   mà per en Roger (diumenge, després del setmanal). Restaurar un snapshot

@@ -6,12 +6,12 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/roger/claude/projects/app1/scripts/coach-job.sh</string>
+    <string>/Users/roger/code/entrenador-triatlo/scripts/coach-job.sh</string>
     <string>weekly</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>20</integer><key>Minute</key><integer>30</integer></dict>
-  <key>StandardOutPath</key><string>/Users/roger/claude/projects/app1/logs/launchd-weekly.log</string>
-  <key>StandardErrorPath</key><string>/Users/roger/claude/projects/app1/logs/launchd-weekly.log</string>
+  <key>StandardOutPath</key><string>/Users/roger/code/entrenador-triatlo/logs/launchd-weekly.log</string>
+  <key>StandardErrorPath</key><string>/Users/roger/code/entrenador-triatlo/logs/launchd-weekly.log</string>
 </dict>
 </plist>
