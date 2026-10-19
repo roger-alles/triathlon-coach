@@ -6,12 +6,12 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
-    <string>/Users/roger/claude/projects/app1/scripts/backup-pull.sh</string>
+    <string>/Users/roger/code/entrenador-triatlo/scripts/backup-pull.sh</string>
   </array>
   <!-- 08:15; si el Mac era apagat o dormia, launchd l'executa en despertar -->
   <key>StartCalendarInterval</key>
   <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>15</integer></dict>
-  <key>StandardOutPath</key><string>/Users/roger/claude/projects/app1/logs/launchd-backup-pull.log</string>
-  <key>StandardErrorPath</key><string>/Users/roger/claude/projects/app1/logs/launchd-backup-pull.log</string>
+  <key>StandardOutPath</key><string>/Users/roger/code/entrenador-triatlo/logs/launchd-backup-pull.log</string>
+  <key>StandardErrorPath</key><string>/Users/roger/code/entrenador-triatlo/logs/launchd-backup-pull.log</string>
 </dict>
 </plist>

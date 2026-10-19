@@ -52,3 +52,12 @@ def test_publish_app_tests_before_publishing_with_a_pinned_cli():
     assert src.index("npx jest") < src.index("update --channel production")
     assert src.index("npx tsc --noEmit") < src.index("update --channel production")
     assert "eas-cli@24.8.0" in src
+
+
+@pytest.mark.parametrize("plist", PLISTS, ids=[Path(p).name for p in PLISTS])
+def test_plists_point_to_the_current_project_folder(plist):
+    # El projecte es va moure de ~/claude/projects/app1 a ~/code/entrenador-triatlo:
+    # amb el camí antic, launchd falla en silenci i la còpia al Mac no es fa
+    src = Path(plist).read_text()
+    assert "/Users/roger/code/entrenador-triatlo/" in src
+    assert "claude/projects/app1" not in src
