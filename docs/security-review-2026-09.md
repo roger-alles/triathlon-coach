@@ -2,7 +2,7 @@
 
 Autor: sessió de treball amb Claude (Roger al comandament). Data: 13/09/2026.
 Àmbit: sistema "entrenador de triatló" sencer, tots actius propis d'en Roger:
-servidor `alberginia` (Clouding, <IP del servidor>), base de dades Supabase, repo
+servidor `alberginia` (Clouding), base de dades Supabase, repo
 privat de GitHub i app Expo. Autoritzat per l'amo dels sistemes.
 
 ## Resum
@@ -49,7 +49,9 @@ i `0007`.
 
 ## Riscos acceptats (revisar després del 27/09)
 
-- **A — Metro 8081 obert a Internet.** El paquet JavaScript i els endpoints de
+- **A — Metro 8081 obert a Internet. Tancat el 17/10/2026**: l'app passa a
+  TestFlight + EAS Update, `expo-dev` aturat i el port tancat (`docs/server.md`).
+  Historial: el paquet JavaScript i els endpoints de
   desenvolupament són accessibles per qualsevol. No hi ha secrets de servidor al
   paquet (només la clau publicable de Supabase, pública per disseny), i les dades
   segueixen protegides per RLS. Decisió: es queda fins a la cursa per no tocar

@@ -20,3 +20,5 @@ logs/
 
 # PM-workspace hook writes this into $CWD
 .savia/
+
+.DS_Store

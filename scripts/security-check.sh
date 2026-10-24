@@ -1,7 +1,7 @@
 #!/bin/bash
 # Comprovacions de seguretat repetibles contra Supabase des de fora (sense
 # privilegis d'admin), amb la clau publicable (la mateixa que va dins de l'app).
-# Ús: scripts/security-check.sh            (llegeix app/.env)
+# Ús: SERVER_IP=<ip> scripts/security-check.sh   (llegeix app/.env)
 # No escriu res. Codi de sortida != 0 si algun check falla.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -23,8 +23,10 @@ echo "$resp" | grep -q "signup_disabled" && ok "signup → signup_disabled" || k
 
 echo "== ports oberts (només 22) =="
 host=$(echo "$URL" | sed -E 's#https?://##;s#/.*##')
-if command -v nmap >/dev/null; then
-  open=$(nmap -Pn -sT -T4 --top-ports 200 "${SERVER_IP:-<IP del servidor>}" 2>/dev/null | grep -cE "^[0-9]+/tcp +open")
+if [ -z "${SERVER_IP:-}" ]; then
+  echo "  --  SERVER_IP no definida, salto"
+elif command -v nmap >/dev/null; then
+  open=$(nmap -Pn -sT -T4 --top-ports 200 "$SERVER_IP" 2>/dev/null | grep -cE "^[0-9]+/tcp +open")
   [ "$open" = "1" ] && ok "ports oberts: $open" || ko "ports oberts: $open (esperat 1, el 22)"
 else
   echo "  --  nmap no instal·lat, salto"
