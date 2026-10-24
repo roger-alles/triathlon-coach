@@ -1,78 +1,129 @@
-# Entrenador de triatló
+# Entrenador: an LLM triathlon coach with guardrails
 
-Entrenador personal automàtic per a un sol atleta. Cada matí llegeix les dades
-de Garmin (entrenaments, son, FC de repòs, estrès), les creua amb un pla
-d'entrenament estructurat i un coach basat en Claude escriu l'informe del dia:
-semàfor, què toca, què canviaria i per què. L'atleta ho veu en una app mòbil.
+[![Tests](https://github.com/roger-alles/triathlon-coach/actions/workflows/tests.yml/badge.svg)](https://github.com/roger-alles/triathlon-coach/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Objectiu actual: Artiem Half Menorca Short (Fornells, 27/09/2026). Fins a la
-cursa el coach corre en mode *dry-run*: proposa, no toca el pla.
+A personal, automatic triathlon coach I built for myself and have used every
+day since September 2026. Each morning it reads my Garmin data (workouts,
+sleep, resting heart rate, stress, body battery), compares it with a
+structured training plan, and has Claude write the day's report: a traffic
+light, what's on today, what it would change, and why. I read it, and approve
+or reject the changes it proposes, in a native mobile app.
 
-## Com està muntat
+It got me to the finish line of my first triathlon (Artiem Half Menorca Short,
+27/09/2026). It now plans my season on a rolling basis.
 
+<!--
+Screenshots: drop four PNGs in docs/screenshots/ and uncomment this block.
+
+<p align="center">
+  <img src="docs/screenshots/today.png" width="22%" alt="Today: daily report and traffic light">
+  <img src="docs/screenshots/week.png" width="22%" alt="Week: the plan with done, moved and cancelled sessions">
+  <img src="docs/screenshots/proposal.png" width="22%" alt="A coach proposal as a session diff with Apply / Discard / Undo">
+  <img src="docs/screenshots/form.png" width="22%" alt="Form: fitness, fatigue and freshness curves">
+</p>
+-->
+
+## Why it's built this way
+
+An LLM is good at reading messy context and explaining a decision. It is bad
+at being reliably safe with someone's body. So the model never writes to the
+plan directly:
+
+- **The plan is data, not text.** Blocks, sessions with structure (warm-up,
+  intervals, pace or RPE targets), priorities and tests live in Postgres,
+  versioned with `superseded_by`. Nothing is ever deleted.
+- **Structured output, then a validator that trusts nobody.** The model
+  answers against a JSON Schema ([`contracts/`](contracts/)). Every proposal
+  is then checked against 15 deterministic coaching rules
+  ([`coach/rules.py`](coach/rules.py)): weekly ramp, deload cadence, spacing of
+  key sessions, intensity distribution, rest days, taper, red flags from
+  sleep and HR, the athlete's declared availability, and more. Six of them
+  block a proposal; the rest are warnings.
+- **Violations go back to the model.** It gets up to 3 attempts. If it still
+  fails, the proposal is discarded, the plan stays as it was, and everything
+  is logged.
+- **Graduated autonomy.** In `dry_run` the coach only proposes. In `hybrid` it
+  applies small changes itself and asks for approval on the rest. Every applied
+  change records its effects so it can be undone from the app.
+- **Every report is reproducible.** It stores the exact input snapshot the
+  model saw, the model used, and any rule violations it had to fix. Prompts
+  are versioned files in [`coach/prompts/`](coach/prompts/).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    G[Garmin Connect] -- hourly sync --> I[ingest/<br/>TRIMP, CTL/ATL/TSB,<br/>activity ↔ session linking]
+    I --> DB[(Postgres<br/>Supabase + RLS)]
+    DB -- plan + metrics --> C[coach/<br/>context → Claude → 15 rules]
+    C -- validated report<br/>and proposals --> DB
+    DB <--> A[Mobile app<br/>Expo, iOS/Android]
+    A -- approve / discard / undo,<br/>RPE, notes, requests --> DB
+    DB --> M[MCP server<br/>for AI assistants]
 ```
-Garmin Connect ──sync──▶ Postgres (Supabase) ◀──── app mòbil (Expo, iOS/Android)
-                              │        ▲
-                        pla + dades    │ informe validat
-                              ▼        │
-                        coach (Claude) ─┘   15 regles dures, 3 intents
-```
 
-| Peça | Carpeta | Què fa |
+| Part | Where | What it does |
 |---|---|---|
-| Ingesta | `ingest/` | Baixa activitats i mètriques diàries de Garmin, calcula càrrega (TRIMP) i forma (CTL/ATL/TSB), lliga cada activitat amb la sessió del pla |
-| Pla | `seeds/`, `coach/plan_loader.py` | El pla és dades, no text: blocs, sessions amb estructura (escalfament, sèries, objectius de ritme), prioritat, tests |
-| Coach | `coach/` | Construeix el context, crida l'API de Claude amb sortida estructurada (`contracts/`), valida el resultat amb 15 regles (`rules.py`) i el desa. Prompts versionats a `coach/prompts/` |
-| Base de dades | `supabase/migrations/`, `migrate.py` | Migracions SQL numerades, aplicades amb un script propi. RLS: l'app només llegeix i escriu el que li toca |
-| App | `app/` | Expo Router + TypeScript. Pestanyes Avui / Setmana / Forma / Objectius, login, detall d'activitat amb RPE i notes |
-| Servidor MCP | `mcp_server/` | Exposa les dades a assistents (setmana, forma, compliment) |
-| Operació | `scripts/`, `docs/server.md` | Feines de cron al servidor (matí, sync horari, vespre, setmanal, decisions), còpia de seguretat, exportació de sessions al rellotge |
+| Ingest | [`ingest/`](ingest/) | Pulls activities and daily metrics from Garmin behind a provider interface, computes training load (TRIMP) and form (CTL/ATL/TSB), links each activity to its planned session |
+| Plan | [`seeds/`](seeds/), [`coach/plan_loader.py`](coach/plan_loader.py) | The plan as structured data, loaded and validated |
+| Coach | [`coach/`](coach/) | Builds a deterministic context, calls Claude with structured output, validates, applies or stores as a proposal. Daily report, evening preview, weekly plan, season macro-plan, week redesign on request |
+| Database | [`supabase/migrations/`](supabase/migrations/), [`migrate.py`](migrate.py) | 14 numbered SQL migrations with a small custom runner. Row-level security: the app can only read and write what it should |
+| App | [`app/`](app/) | Expo Router + TypeScript. Today / Week / Form / Goals / Me tabs, activity detail with RPE and notes, proposal review, goal and profile editing |
+| MCP server | [`mcp_server/`](mcp_server/) | Exposes the week, form curve and compliance to AI assistants |
+| Ops | [`scripts/`](scripts/), [`docs/server.md`](docs/server.md) | Cron jobs on a small Linux VM, a daily deploy from `main`, DB backups off the VM, app releases through TestFlight + EAS Update |
 
-## Per on mirar
+## Running in production
 
-1. `SPEC-entrenador-triatlo.md`: què és, model de dades, les 15 regles del coach, fases.
-2. `docs/decisions.md`: per què cada cosa és com és (decisions amb data).
-3. `coach/run.py` i `coach/rules.py`: el cor. Generació de l'informe i validació.
-4. `app/app/(tabs)/index.tsx`: la pantalla Avui.
-5. `docs/post-cursa-design.md`: cap on va després del 27/09 (planificació rodant, aprovació de propostes des de l'app).
-6. `docs/security-review-2026-09.md`: revisió de seguretat (hardening, còpies, pentest) i riscos acceptats.
+- Runs unattended on a 1 vCPU / 2 GB Ubuntu VM. The morning job waits until
+  Garmin has that night's sleep, then writes the report once. A recheck
+  rewrites it if the sleep data changes later in the morning.
+- All jobs share a `flock` lock and run on staggered minutes, so jobs that
+  give up when the lock is busy never collide.
+- About €0.11 per daily report, €0.18 per weekly plan. Output token caps
+  limit what a runaway generation can cost.
+- Server hardening, a black-box and grey-box pentest, and the risks accepted
+  at the time are written up in
+  [`docs/security-review-2026-09.md`](docs/security-review-2026-09.md).
 
-## Executar
+## Engineering notes
 
-Cal Python 3.12, Node 20+ i un `.env` (vegeu `.env.example` i `app/.env.example`).
-Sense les claus (Supabase, Garmin, Anthropic) no arrenca res: és un sistema
-d'un sol usuari amb dades reals.
+- **Tests:** about 295 Python tests (ingest, rules, coach loop, decisions,
+  migrations) and 185 app tests (Jest + Testing Library), run in CI on every
+  PR. Garmin, the database and the model are faked, so CI needs no secrets.
+- **Decision log:** [`docs/decisions.md`](docs/decisions.md) records every
+  non-obvious choice with its date and reasoning.
+- **Spec first:** [`SPEC-entrenador-triatlo.md`](SPEC-entrenador-triatlo.md)
+  covers the data model, the coaching rules and the build phases.
+- The app's UI, the coach's persona and the design docs are in Catalan, my
+  language. The code and commit history are in English.
+
+## Running it
+
+This is a single-user system wired to real accounts. Without Supabase, Garmin
+and Anthropic credentials, only the tests run.
 
 ```bash
-make test        # 171 tests Python (ingesta, regles, coach, migracions)
-cd app && npx jest   # 89 tests de l'app
-make sync        # ingesta Garmin -> BD
-make report      # últim informe del coach
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+make test                         # Python suite
+cd app && npm ci && npx jest      # app suite
 ```
 
-## Estat
+With credentials (see `.env.example` and `app/.env.example`):
 
-- Ingesta, pla, coach diari/setmanal, validador i app: en producció al servidor
-  des del 07/09/2026, sense dependre de cap màquina personal.
-- Propostes del coach a l'app: diff de sessions amb la raó, Aplica / Descarta /
-  Desfés, i interruptor del mode (prova o híbrid) a Objectius. En híbrid el
-  coach aplica sol els canvis petits i demana permís per a la resta; tot amb
-  efectes registrats i desfer.
-- Sessions fetes sense rellotge: "Ho he fet" a Avui i a Setmana (dies
-  anteriors, sessions perdudes, trams d'un triatló), amb el dia real de la
-  sessió; el vinculador respecta la sessió que l'atleta ha triat.
-- Objectius des de l'app: llista A/B/C, alta, edició i abandonament; l'A més
-  proper governa el pla.
-- Validador preparat per al pla rodant: el coach pot crear sessions dins
-  d'un bloc, i les regles jutgen contra les hores reals de les últimes setmanes.
-- Macro: el coach proposa els blocs del pla (fases, dates, hores) fins a
-  l'objectiu i la recuperació, amb Opus, a petició des de l'app; s'aprova a Avui.
-- Perfil de l'atleta (pestanya Jo): dia de descans, hores i dies disponibles,
-  piscina, notes per al coach; el validador (R15) i el macro els respecten.
-  Temps objectiu i notes per objectiu; el coach els jutja amb les marques reals.
-- Setmana rodant: diumenge el coach escriu la setmana següent dins del bloc
-  (o l'ajusta si ja existeix); s'aprova a Avui amb el raonament i les
-  preguntes del coach a la targeta. Els objectius passats es donen per fets.
-- App instal·lada amb TestFlight; el desplegament diari del servidor la
-  publica amb EAS Update quan hi ha canvis a `app/` (si passen els tests).
-- Pendent: multiusuari.
+```bash
+make migrate    # apply SQL migrations
+make sync       # Garmin -> database
+make validate   # check the plan against the 15 rules
+make report     # latest coach report
+```
+
+## What's next
+
+Multi-user support: today one athlete owns the database. See
+[`docs/post-cursa-design.md`](docs/post-cursa-design.md) for the post-race
+design.
+
+## License
+
+[MIT](LICENSE)

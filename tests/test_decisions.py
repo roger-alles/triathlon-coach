@@ -188,10 +188,20 @@ def test_undo_of_an_added_session_cancels_it_instead_of_pointing_back():
     assert conn.sql("set proposal_status='undone'")[0][1] == (7,)
 
 
+def _freeze_today(monkeypatch, day):
+    """date.today() inside coach.decisions returns `day`, so the fixed dates stay valid."""
+    class _Date(date):
+        @classmethod
+        def today(cls):
+            return day
+    monkeypatch.setattr("coach.decisions.date", _Date)
+
+
 # ─── S3: blocs i peticions ───────────────────────────────────────────
 
-def test_apply_a_macro_proposal_writes_the_blocks_in_the_same_transaction():
+def test_apply_a_macro_proposal_writes_the_blocks_in_the_same_transaction(monkeypatch):
     from coach.models import Athlete, Block, Goal, History
+    _freeze_today(monkeypatch, date(2026, 9, 22))
     race = date(2026, 9, 27)
     goal = Goal(name="Fornells", discipline="triathlon", event_date=race, priority="A", id=2,
                 profile={"target_times_sec": {"total": [8110, 7470, 6895]}})
@@ -261,8 +271,9 @@ def test_week_request_validates_text_and_week():
     assert "ja ha passat" in week_request(_week_payload(), date(2026, 10, 12))
 
 
-def test_week_request_is_routed_redesigned_and_answered():
+def test_week_request_is_routed_redesigned_and_answered(monkeypatch):
     from coach.decisions import process_request
+    _freeze_today(monkeypatch, date(2026, 10, 7))
     seen = []
     conn = Conn(decision=(0, 0, ""))
     run_week = lambda monday, text: seen.append((monday, text)) or {

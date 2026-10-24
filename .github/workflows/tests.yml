@@ -1,0 +1,41 @@
+# Runs the Python suite (ingest, rules, coach, migrations) and the app's
+# tests and typecheck on every PR and on main. No secrets: everything that
+# talks to Garmin, Supabase or the model is faked in the tests.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest tests/ -q
+
+  app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx jest
+      - run: npx tsc --noEmit

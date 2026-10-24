@@ -5,7 +5,7 @@
 
 ## Accés
 
-- Host: `<IP del servidor>` (Clouding), Ubuntu 26.04, 1 vCPU / 2 GB / 15 GB.
+- Host: VM de Clouding (IP al `~/.ssh/config` del Mac, no al repo), Ubuntu 26.04, 1 vCPU / 2 GB / 15 GB.
 - Des del Mac d'en Roger: `ssh entrenador` (alias a `~/.ssh/config`, usuari `root`,
   clau `~/.ssh/id_ed25519`). Per a una màquina nova: afegir la seva clau pública
   a `/root/.ssh/authorized_keys` amb `ssh-copy-id`.
@@ -126,7 +126,7 @@ cicle reintenta.
 | SSH | només claus: `PermitRootLogin prohibit-password`, `PasswordAuthentication no`, `MaxAuthTries 3` (`/etc/ssh/sshd_config.d/10-hardening.conf`) | `sshd -T \| grep -E "permitrootlogin\|passwordauth"`; des del Mac `ssh -o PubkeyAuthentication=no entrenador` ha de dir `Permission denied (publickey)` |
 | fail2ban | jail `sshd`, 3 intents en 10 min → 1 h de ban (`/etc/fail2ban/jail.local`, backend systemd) | `fail2ban-client status sshd` |
 | ufw | entrada denegada per defecte; només 22/tcp | `ufw status verbose` |
-| Tallafocs de Clouding | `alberfirewall`, només per a aquest servidor: 22/tcp i ICMP (ping). **No** `default`: és compartit amb (d'altres persones del compte) i obre molts més ports; tocar-lo els afecta | Panell → `alberginia` → Xarxa → Firewalls Vinculats; des del Mac, `nc -z -G 4 <IP del servidor> 8081` ha de fallar |
+| Tallafocs de Clouding | `alberfirewall`, només per a aquest servidor: 22/tcp i ICMP (ping). **No** `default`: és compartit amb altres servidors del compte i obre molts més ports; tocar-lo els afecta | Panell → `alberginia` → Xarxa → Firewalls Vinculats; des del Mac, `nc -z -G 4 "$SERVER_IP" 8081` ha de fallar |
 | Actualitzacions | `unattended-upgrades` diari (`/etc/apt/apt.conf.d/20auto-upgrades`) | `systemctl status unattended-upgrades`; `ls /var/run/reboot-required` |
 | Secrets | `.env` i `app/.env` 600 de `entrenador`; tokens Garmin a `~/.garminconnect` 700 | `ls -la ~entrenador/entrenador-triatlo/.env` |
 
