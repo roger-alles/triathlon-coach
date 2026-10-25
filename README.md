@@ -13,16 +13,12 @@ or reject the changes it proposes, in a native mobile app.
 It got me to the finish line of my first triathlon (Artiem Half Menorca Short,
 27/09/2026). It now plans my season on a rolling basis.
 
-<!--
-Screenshots: drop four PNGs in docs/screenshots/ and uncomment this block.
-
 <p align="center">
   <img src="docs/screenshots/today.png" width="22%" alt="Today: daily report and traffic light">
-  <img src="docs/screenshots/week.png" width="22%" alt="Week: the plan with done, moved and cancelled sessions">
-  <img src="docs/screenshots/proposal.png" width="22%" alt="A coach proposal as a session diff with Apply / Discard / Undo">
+  <img src="docs/screenshots/week.png" width="22%" alt="Week: the plan with done, missed and pending sessions">
+  <img src="docs/screenshots/proposal.png" width="22%" alt="A coach proposal as a session diff with Apply / Discard">
   <img src="docs/screenshots/form.png" width="22%" alt="Form: fitness, fatigue and freshness curves">
 </p>
--->
 
 ## Why it's built this way
 
